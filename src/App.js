@@ -3,19 +3,18 @@ import { client } from "@gradio/client";
 import './index.css';
 
 function App() {
-  const [selectedFile, setSelectedFile] = useState(null); // 화면 표시용 (이미지/비디오 URL)
-  const [rawFile, setRawFile] = useState(null);           // API 전송용 파일 객체
-  const [fileType, setFileType] = useState('');           // 'image' 또는 'video' 구분
+  const [selectedFile, setSelectedFile] = useState(null); 
+  const [rawFile, setRawFile] = useState(null);           
+  const [fileType, setFileType] = useState('');           
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [analysisResult, setAnalysisResult] = useState({
-    graphImg: null,       // 비디오용 시계열 그래프
-    freqImg: null,        // 이미지용 주파수 분석 차트
-    detectImg: null,      // 이미지용 픽셀 분석 차트
-    realConfidence: null, // 종합 신뢰도 점수
-    comment: ""           // AI 분석 코멘트
+    graphImg: null,       
+    freqImg: null,        
+    detectImg: null,      
+    realConfidence: null, 
+    comment: ""           
   });
 
-  // 파일 선택 핸들러
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -23,14 +22,12 @@ function App() {
       setSelectedFile(URL.createObjectURL(file));
       setFileType(file.type.startsWith('video') ? 'video' : 'image');
       
-      // 결과 초기화
       setAnalysisResult({ 
         graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" 
       });
     }
   };
 
-  // 분석 실행 핸들러
   const handleAnalyze = async () => {
     if (!rawFile) {
       alert("분석할 사진이나 영상을 먼저 올려주세요! ✨");
@@ -40,25 +37,27 @@ function App() {
     setIsAnalyzing(true);
 
     try {
-      // 1. 허깅페이스 스페이스 연결
       const app = await client("euntaejang/deepfake");
-      
-      // 2. 파일 타입에 따라 다른 API 엔드포인트 호출
       const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
       
+      // API 호출
       const apiResult = await app.predict(endpoint, [ rawFile ]);
 
       console.log("API 응답:", apiResult);
 
+      // 백엔드에서 얼굴 검출 실패 시 raise gr.Error를 던지면 
+      // Gradio Client가 내부적으로 에러를 발생시켜 catch 블록으로 이동하지만,
+      // 만약 정상 응답 내에 상태 메시지가 포함된 경우를 위해 아래와 같이 처리합니다.
+
       if (fileType === 'video') {
-        /* 비디오 응답 매핑: [평균확률, 그래프경로, 상세점수리스트] */
+        /* 비디오 응답 매핑: [평균확률, 그래프경로, 상세데이터(JSON), 상태메시지] */
         setAnalysisResult({
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
           comment: apiResult.data[0] > 50 ? "영상 전반에서 자연스러운 흐름이 관찰됩니다." : "특정 구간에서 인위적인 프레임 왜곡이 감지되었습니다."
         });
       } else {
-        /* 이미지 응답 매핑: [확률, 주파수차트, 픽셀차트] */
+        /* 이미지 응답 매핑: [확률, 주파수차트, 픽셀차트, 상태메시지] */
         setAnalysisResult({
           realConfidence: apiResult.data[0],
           freqImg: apiResult.data[1]?.url,
@@ -68,8 +67,19 @@ function App() {
       }
 
     } catch (error) {
-      console.error("API 호출 에러:", error);
-      alert("AI 서버 연결에 실패했습니다. 파일 크기가 너무 크거나 서버가 점검 중일 수 있습니다.");
+      console.error("API 호출 에러 상세:", error);
+      
+      // 백엔드에서 보낸 gr.Error 메시지를 사용자에게 보여줌
+      if (error.message.includes("얼굴을 검출하지 못했습니다")) {
+        alert("🔍 얼굴을 찾을 수 없어요!\n사진 속 인물의 얼굴이 잘 보이도록 다시 찍어주세요.");
+      } else {
+        alert("AI 요정이 잠시 자리를 비웠나봐요. (서버 연결 실패)");
+      }
+      
+      // 결과 초기화
+      setAnalysisResult({ 
+        graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "얼굴 검출에 실패하여 분석을 중단했습니다." 
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -108,6 +118,7 @@ function App() {
                 <div className="text-center p-4">
                   <div className="text-5xl mb-3">🎬</div>
                   <p className="text-pink-400 font-bold">사진 또는 영상 업로드</p>
+                  <p className="text-[10px] text-gray-400 mt-2">얼굴이 정면으로 잘 보이는 파일을 선택해주세요!</p>
                 </div>
               )}
               <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*" />
@@ -117,14 +128,14 @@ function App() {
           <button 
             onClick={handleAnalyze} 
             disabled={isAnalyzing}
-            className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-xl transition-all ${isAnalyzing ? 'bg-gray-400' : 'bg-gradient-to-r from-pink-400 to-rose-400 hover:scale-[1.02]'}`}>
-            {isAnalyzing ? "🧚 분석 마법 시전 중..." : "🔮 판독 시작"}
+            className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-xl transition-all ${isAnalyzing ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-pink-400 to-rose-400 hover:scale-[1.02]'}`}>
+            {isAnalyzing ? "🧚 얼굴 찾는 중..." : "🔮 판독 시작"}
           </button>
 
           <div className="p-6 bg-white/80 rounded-3xl border border-pink-100 shadow-sm">
-            <h3 className="font-bold text-pink-600 mb-2 flex items-center gap-2"><span>📝</span> 요정의 한마디</h3>
+            <h3 className="font-bold text-pink-600 mb-2 flex items-center gap-2"><span>📝</span> 분석 상태</h3>
             <p className="text-gray-600 text-sm italic">
-              {analysisResult.comment || "파일을 분석하면 AI가 진실을 말해줄 거예요."}
+              {analysisResult.comment || "파일을 분석하면 AI가 결과를 말해줄 거예요."}
             </p>
           </div>
         </section>
@@ -147,33 +158,30 @@ function App() {
               )}
             </div>
 
-            {/* 결과 시각화 영역 */}
             <div className="mt-8">
               {fileType === 'video' ? (
-                // 비디오 분석 결과 (타임라인 그래프)
                 <div className="space-y-4">
-                  <p className="text-sm font-bold text-gray-500 ml-2">📊 시간대별 신뢰도 변화 (Timeline Analysis)</p>
+                  <p className="text-sm font-bold text-gray-500 ml-2">📊 시간대별 신뢰도 변화</p>
                   <div className="w-full bg-gray-50 rounded-2xl border-2 border-dashed border-pink-100 p-2">
                     {analysisResult.graphImg ? (
                       <img src={analysisResult.graphImg} className="w-full h-auto rounded-xl" alt="Timeline Graph" />
                     ) : (
-                      <div className="h-48 flex items-center justify-center text-gray-300">영상 분석 완료 후 그래프가 표시됩니다.</div>
+                      <div className="h-48 flex items-center justify-center text-gray-300">얼굴 검출 및 분석 완료 후 그래프가 표시됩니다.</div>
                     )}
                   </div>
                 </div>
               ) : (
-                // 이미지 분석 결과 (주파수 & 픽셀)
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-gray-400 ml-2">🌈 주파수 도메인 분석</p>
                     <div className="aspect-square bg-gray-50 rounded-2xl border-2 border-dashed border-pink-100 overflow-hidden flex items-center justify-center">
-                      {analysisResult.freqImg ? <img src={analysisResult.freqImg} className="w-full h-full object-contain" alt="Freq" /> : <span className="text-gray-300 text-xs">대기 중</span>}
+                      {analysisResult.freqImg ? <img src={analysisResult.freqImg} className="w-full h-full object-contain" alt="Freq" /> : <span className="text-gray-300 text-xs">검출 대기 중</span>}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-gray-400 ml-2">🔍 픽셀 정밀 분석</p>
                     <div className="aspect-square bg-gray-50 rounded-2xl border-2 border-dashed border-pink-100 overflow-hidden flex items-center justify-center">
-                      {analysisResult.detectImg ? <img src={analysisResult.detectImg} className="w-full h-full object-contain" alt="Pixel" /> : <span className="text-gray-300 text-xs">대기 중</span>}
+                      {analysisResult.detectImg ? <img src={analysisResult.detectImg} className="w-full h-full object-contain" alt="Pixel" /> : <span className="text-gray-300 text-xs">검출 대기 중</span>}
                     </div>
                   </div>
                 </div>
@@ -186,7 +194,7 @@ function App() {
              <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
                 <div className="bg-gradient-to-r from-pink-300 to-pink-500 h-full transition-all duration-1000" style={{ width: `${displayScore || 0}%` }}></div>
              </div>
-             <p className="text-[10px] text-gray-400 mt-4">* 본 결과는 딥러닝 모델의 확률적 수치이며, 영상의 모든 프레임을 전수 조사하지는 않습니다.</p>
+             <p className="text-[10px] text-gray-400 mt-4">* 얼굴이 인식되지 않으면 결과가 나오지 않습니다. 흐릿한 사진이나 마스크를 쓴 사진은 분석이 어려울 수 있습니다.</p>
           </div>
         </section>
       </main>
