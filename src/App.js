@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react'; // useEffect 제거
 import { client } from "@gradio/client";
 import './index.css';
 
