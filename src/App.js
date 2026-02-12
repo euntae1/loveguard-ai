@@ -14,12 +14,19 @@ function App() {
   const [progress, setProgress] = useState(0);
   
   const [analysisResult, setAnalysisResult] = useState({
-    graphImg: null,
-    freqImg: null,
-    detectImg: null,
-    realConfidence: null,
-    comment: ""
+    graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: ""
   });
+
+  // 초기화 함수
+  const handleReset = () => {
+    setSelectedFile(null);
+    setRawFile(null);
+    setFileType('');
+    setUrlInput('');
+    setUrlResults([]);
+    setAnalysisResult({ graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" });
+    setProgress(0);
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -50,42 +57,32 @@ function App() {
   };
 
   const handleAnalyzeFile = async () => {
-    if (!rawFile) return alert("분석할 파일을 업로드하십시오.");
+    if (!rawFile) return;
     setIsAnalyzing(true);
     const timer = startProgress(fileType === 'video' ? Math.max(videoDuration * 2, 8) : 5);
-
     try {
       const app = await client("euntaejang/deepfake");
       const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
       const apiResult = await app.predict(endpoint, [rawFile]);
-
       clearInterval(timer);
       setProgress(100);
-
-      if (fileType === 'video') {
-        setAnalysisResult({
-          realConfidence: apiResult.data[0],
-          graphImg: apiResult.data[1]?.url,
-          comment: apiResult.data[0] > 50 ? "분석 결과, 프레임 일관성이 정상 범주 내에 있습니다." : "비정상적인 프레임 변조 패턴이 감지되었습니다."
-        });
-      } else {
-        setAnalysisResult({
-          realConfidence: apiResult.data[0],
-          freqImg: apiResult.data[1]?.url,
-          detectImg: apiResult.data[2]?.url,
-          comment: apiResult.data[0] > 50 ? "고주파 노이즈 및 특징점 분석 결과 정상 이미지로 판독됩니다." : "인공지능에 의한 픽셀 재구성 흔적이 식별되었습니다."
-        });
-      }
+      setAnalysisResult({
+        realConfidence: apiResult.data[0],
+        graphImg: fileType === 'video' ? apiResult.data[1]?.url : null,
+        freqImg: fileType !== 'video' ? apiResult.data[1]?.url : null,
+        detectImg: fileType !== 'video' ? apiResult.data[2]?.url : null,
+        comment: apiResult.data[0] > 50 ? "인증됨: 데이터 변조 징후 없음" : "위험: 비정상적 아티팩트 검출"
+      });
     } catch (error) {
       clearInterval(timer);
-      alert("분석 엔진 오류가 발생했습니다.");
+      alert("System Error: 분석 엔진에 접근할 수 없습니다.");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const handleAnalyzeUrl = async () => {
-    if (!urlInput) return alert("대상 URL을 입력하십시오.");
+    if (!urlInput) return;
     setIsAnalyzing(true);
     const timer = startProgress(10); 
     try {
@@ -94,15 +91,11 @@ function App() {
       clearInterval(timer);
       setProgress(100);
       const resultData = apiResult.data[0];
-      if (resultData && resultData.length > 0) {
-        setUrlResults(resultData);
-      } else {
-        alert("해당 도메인에서 분석 가능한 객체를 식별할 수 없습니다.");
-        setUrlResults([]);
-      }
+      if (resultData && resultData.length > 0) setUrlResults(resultData);
+      else alert("No Data: 식별 가능한 인물이 없습니다.");
     } catch (error) {
       clearInterval(timer);
-      alert("네트워크 연결 또는 도메인 접근 오류입니다.");
+      alert("Network Error: 원격 도메인 연결 실패");
     } finally {
       setIsAnalyzing(false);
     }
@@ -111,211 +104,161 @@ function App() {
   const displayScore = analysisResult.realConfidence !== null ? Math.floor(analysisResult.realConfidence) : null;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-10 font-sans text-slate-800">
-      {/* Header 영역: 전문 보안 솔루션 느낌 */}
-      <header className="max-w-7xl mx-auto mb-12 flex flex-col md:flex-row justify-between items-center gap-6">
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg shadow-blue-200 shadow-lg">
-            <span className="text-white text-2xl font-bold">🛡️</span>
+    <div className="min-h-screen bg-[#020617] p-4 md:p-8 font-mono text-slate-300">
+      {/* GNB: Cyber Security Style */}
+      <header className="max-w-7xl mx-auto mb-10 flex flex-col md:flex-row justify-between items-center border-b border-slate-800 pb-6 gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-600 flex items-center justify-center rounded-sm shadow-[0_0_20px_rgba(37,99,235,0.4)]">
+            <span className="text-white text-2xl font-bold font-sans">V</span>
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 uppercase">VeriScan AI <span className="text-blue-600">Pro</span></h1>
-            <p className="text-xs text-slate-500 font-medium tracking-widest">ADVANCED DEEPFAKE DETECTION SYSTEM</p>
+            <h1 className="text-xl font-black text-white tracking-tighter uppercase italic">DeepTrace <span className="text-blue-500">Forensics</span></h1>
+            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold tracking-widest">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> CORE ENGINE v4.2 // STATUS: SECURE
+            </div>
           </div>
         </div>
         
-        <nav className="flex bg-slate-200/50 p-1.5 rounded-xl border border-slate-200">
-          <button 
-            onClick={() => setActiveTab('file')}
-            className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'file' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >LOCAL FILE</button>
-          <button 
-            onClick={() => setActiveTab('url')}
-            className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'url' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >WEB SCANNER</button>
-        </nav>
+        <div className="flex bg-slate-900 border border-slate-700 p-1">
+          <button onClick={() => { setActiveTab('file'); handleReset(); }} className={`px-6 py-2 text-xs font-bold transition-all ${activeTab === 'file' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>FILESYSTEM</button>
+          <button onClick={() => { setActiveTab('url'); handleReset(); }} className={`px-6 py-2 text-xs font-bold transition-all ${activeTab === 'url' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'}`}>NETWORK_SCAN</button>
+        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
-        
-        {/* Left Side: Control Panel */}
-        <section className="lg:col-span-4 space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-sm font-bold text-slate-400 mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 bg-blue-500 rounded-full"></span> INPUT SOURCE
-            </h2>
+      <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left: Operations Panel */}
+        <section className="lg:col-span-4 space-y-4">
+          <div className="bg-slate-900/50 border border-slate-800 p-6 relative overflow-hidden group">
+            <div className="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
+            <h2 className="text-[10px] font-black text-blue-500 mb-4 tracking-[0.2em]">COMMAND_CENTER</h2>
             
             {activeTab === 'file' ? (
               <div className="space-y-4">
-                <label className="group relative aspect-video bg-slate-50 rounded-xl flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer overflow-hidden">
+                <label className="relative aspect-video bg-black/40 border border-slate-700 flex flex-col items-center justify-center group-hover:border-blue-500/50 transition-all cursor-pointer">
                   {selectedFile ? (
-                    fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-cover" /> : <img src={selectedFile} alt="Source" className="w-full h-full object-cover" />
+                    fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} alt="Source" className="w-full h-full object-contain" />
                   ) : (
-                    <div className="text-center p-6">
-                      <div className="text-3xl mb-2 opacity-40">📥</div>
-                      <p className="text-sm font-semibold text-slate-500">Drop files or Browse</p>
-                      <p className="text-xs text-slate-400 mt-1">Image, Video supported</p>
+                    <div className="text-center">
+                      <p className="text-[10px] text-slate-500 font-bold">DRAG_AND_DROP_ASSET</p>
                     </div>
                   )}
                   <input type="file" className="hidden" onChange={handleFileChange} />
                 </label>
-                <button onClick={handleAnalyzeFile} disabled={isAnalyzing} className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' : 'bg-slate-900 hover:bg-blue-700'}`}>
-                  {isAnalyzing ? "ANALYZING..." : "EXECUTE ANALYSIS"}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={handleAnalyzeFile} disabled={isAnalyzing || !rawFile} className="py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white text-[10px] font-black tracking-widest transition-all">START_ANALYSIS</button>
+                  <button onClick={handleReset} className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black tracking-widest">RESET_SYSTEM</button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <input 
-                  type="text" 
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="Enter target URL (https://...)"
-                  className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm font-medium"
-                />
-                <button onClick={handleAnalyzeUrl} disabled={isAnalyzing} className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isAnalyzing ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                  {isAnalyzing ? "SCANNING WEB..." : "START WEB CRAWL"}
-                </button>
+                <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="SOURCE_URL_INPUT..." className="w-full bg-black border border-slate-700 p-3 text-xs text-blue-400 font-mono focus:border-blue-500 outline-none" />
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={handleAnalyzeUrl} disabled={isAnalyzing || !urlInput} className="py-3 bg-blue-600 text-white text-[10px] font-black tracking-widest">INITIATE_CRAWL</button>
+                  <button onClick={handleReset} className="py-3 bg-slate-800 text-slate-300 text-[10px] font-black tracking-widest">RESET_SCAN</button>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="p-6 bg-slate-900 rounded-2xl shadow-xl text-white">
-            <h3 className="text-xs font-bold text-blue-400 mb-3 uppercase tracking-tighter">System Intelligence</h3>
-            <p className="text-sm text-slate-300 leading-relaxed font-light">
-              {analysisResult.comment || "대상을 입력받아 심층 신경망 분석(Deep Neural Network)을 대기 중입니다."}
-            </p>
+          <div className="bg-slate-900/80 border border-slate-800 p-4 font-mono">
+            <div className="text-[9px] text-slate-500 mb-2 border-b border-slate-800 pb-1">KERNEL_LOG</div>
+            <div className="text-[10px] space-y-1">
+              <p className="text-emerald-500 leading-tight tracking-tighter">&gt; Analysis engine standing by...</p>
+              {isAnalyzing && <p className="text-blue-400 animate-pulse leading-tight">&gt; Scanning neural layers...</p>}
+              {displayScore && <p className="text-white leading-tight">&gt; Integrity: {displayScore}% detected.</p>}
+            </div>
           </div>
         </section>
 
-        {/* Right Side: Analytics Dashboard */}
-        <section className="lg:col-span-8">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[500px]">
-            <div className="border-b border-slate-100 px-8 py-5 flex justify-between items-center bg-slate-50/50">
-              <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                <span className="text-blue-600">📊</span> ANALYSIS REPORT
-              </h3>
-              {displayScore !== null && (
-                <span className="text-[10px] font-black bg-slate-200 px-2 py-1 rounded text-slate-600">UID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
-              )}
+        {/* Right: Data Visualization */}
+        <section className="lg:col-span-8 bg-black/40 border border-slate-800 relative">
+          <div className="p-1 bg-slate-800 flex justify-between px-4">
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Analysis_Output_Dashboard</span>
+            <div className="flex gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500/20"></span>
+              <span className="w-2 h-2 rounded-full bg-yellow-500/20"></span>
+              <span className="w-2 h-2 rounded-full bg-green-500/20"></span>
             </div>
+          </div>
 
-            <div className="p-8">
-              {/* Progress Tracker */}
-              {(isAnalyzing || progress > 0) && (
-                <div className="mb-10">
-                  <div className="flex justify-between items-end mb-2">
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">Neural Processing</p>
-                    <p className="text-2xl font-black text-slate-800">{Math.floor(progress)}%</p>
-                  </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-600 transition-all duration-500 ease-out" style={{ width: `${progress}%` }}></div>
-                  </div>
+          <div className="p-6 md:p-10">
+            {/* Analysis Progress */}
+            {(isAnalyzing || progress > 0) && (
+              <div className="mb-8 border border-blue-900/30 bg-blue-900/5 p-4">
+                <div className="flex justify-between text-[10px] font-black text-blue-500 mb-2 tracking-widest">
+                  <span>PROCESSING_NEURAL_PIXELS</span>
+                  <span>{Math.floor(progress)}%</span>
                 </div>
-              )}
+                <div className="h-1 bg-slate-800 overflow-hidden">
+                  <div className="h-full bg-blue-500 shadow-[0_0_10px_#3b82f6] transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                </div>
+              </div>
+            )}
 
-              {/* Result Visuals */}
-              {activeTab === 'file' && (
-                <div className="animate-in fade-in duration-700">
-                  {displayScore !== null ? (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
-                      <div className="md:col-span-1 bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-center items-center">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Integrity Score</p>
-                        <div className="relative flex items-center justify-center">
-                          <svg className="w-24 h-24 transform -rotate-90">
-                            <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-200" />
-                            <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" 
-                              strokeDasharray={251.2} strokeDashoffset={251.2 - (251.2 * displayScore) / 100}
-                              className={`${displayScore > 50 ? 'text-blue-500' : 'text-red-500'} transition-all duration-1000`} />
-                          </svg>
-                          <span className="absolute text-2xl font-black text-slate-800">{displayScore}%</span>
-                        </div>
+            {activeTab === 'file' ? (
+              <div className="space-y-8">
+                {displayScore !== null ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center border border-slate-800 p-6 bg-slate-900/30">
+                    <div className="space-y-4">
+                      <div className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Detection_Confidence</div>
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-6xl font-black ${displayScore > 50 ? 'text-emerald-500' : 'text-red-600'}`}>{displayScore}%</span>
+                        <span className="text-xs font-bold text-slate-600">CERT_VAL</span>
                       </div>
-                      <div className="md:col-span-2 flex flex-col justify-center">
-                        <div className={`inline-block w-fit px-4 py-1.5 rounded-full text-xs font-black mb-4 tracking-widest text-white ${displayScore > 50 ? 'bg-emerald-500' : 'bg-red-600 animate-pulse'}`}>
-                          {displayScore > 50 ? 'AUTHENTICATED' : 'SPOOFING DETECTED'}
-                        </div>
-                        <h4 className="text-2xl font-bold text-slate-900 mb-2">
-                          {displayScore > 50 ? "신뢰할 수 있는 데이터" : "조작된 콘텐츠 가능성 높음"}
-                        </h4>
-                        <p className="text-slate-500 text-sm leading-relaxed">디지털 지문 및 주파수 도메인 분석 결과, {displayScore > 50 ? "변조 흔적이 발견되지 않았습니다." : "이미지 합성 알고리즘에 의한 아티팩트가 검출되었습니다."}</p>
+                      <div className={`text-[10px] font-bold px-3 py-1 inline-block border ${displayScore > 50 ? 'border-emerald-500 text-emerald-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
+                        RESULT: {displayScore > 50 ? 'AUTHENTIC_CONTENT' : 'DEEPFAKE_VULNERABILITY'}
                       </div>
                     </div>
+                    <div className="text-[11px] text-slate-400 leading-relaxed font-sans bg-black/40 p-4 border-l-2 border-slate-700">
+                      시스템 분석 결과 해당 객체는 {displayScore > 50 ? "인위적인 픽셀 변조 징후가 희박하며, 주파수 도메인 상의 데이터가 원본 기기 특성과 일치합니다." : "고도화된 생성형 인공지능에 의한 특징점 왜곡이 발견되었습니다. 무단 배포 및 신뢰에 주의하십시오."}
+                    </div>
+                  </div>
+                ) : (
+                  !isAnalyzing && <div className="text-center py-20 border border-dashed border-slate-800 opacity-30 text-xs">AWAITING_INPUT_DATA...</div>
+                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {fileType === 'video' ? (
+                    analysisResult.graphImg && <div className="col-span-2 border border-slate-800 p-1"><img src={analysisResult.graphImg} className="w-full grayscale opacity-80 hover:grayscale-0 transition-all" alt="Analysis" /></div>
                   ) : (
-                    !isAnalyzing && (
-                      <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-100 rounded-3xl">
-                        <p className="text-slate-300 font-medium italic">분석 대기 중입니다.</p>
-                      </div>
-                    )
+                    <>
+                      {analysisResult.freqImg && <div className="border border-slate-800 p-1 bg-black"><img src={analysisResult.freqImg} className="w-full" alt="Freq" /></div>}
+                      {analysisResult.detectImg && <div className="border border-slate-800 p-1 bg-black"><img src={analysisResult.detectImg} className="w-full" alt="Detect" /></div>}
+                    </>
                   )}
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {fileType === 'video' ? (
-                      analysisResult.graphImg && <div className="col-span-2 rounded-xl overflow-hidden border border-slate-200 shadow-sm transition-all hover:shadow-md">
-                        <div className="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 border-b border-slate-100 uppercase">Temporal Consistency Graph</div>
-                        <img src={analysisResult.graphImg} className="w-full" alt="Analysis Graph" />
-                      </div>
-                    ) : (
-                      <>
-                        {analysisResult.freqImg && <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                          <div className="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 border-b border-slate-100 uppercase">Frequency Domain</div>
-                          <img src={analysisResult.freqImg} className="w-full" alt="Frequency Analysis" />
-                        </div>}
-                        {analysisResult.detectImg && <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                          <div className="bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 border-b border-slate-100 uppercase">Feature Extraction</div>
-                          <img src={analysisResult.detectImg} className="w-full" alt="Detection Result" />
-                        </div>}
-                      </>
-                    )}
-                  </div>
                 </div>
-              )}
-
-              {/* URL Scanner Results */}
-              {activeTab === 'url' && (
-                <div className="space-y-6 animate-in slide-in-from-bottom-5 duration-700">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-600 uppercase">Detected Assets ({urlResults.length})</h3>
-                    <div className="h-px flex-1 bg-slate-100 mx-4"></div>
-                  </div>
-                  {urlResults.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      {urlResults.map((res, index) => (
-                        <div key={index} className="group flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-400 transition-all shadow-sm">
-                          <div className="relative overflow-hidden aspect-[4/3]">
-                            <img src={res.url} alt="Crawl result" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                            <div className="absolute top-3 right-3">
-                              <span className={`px-3 py-1 rounded-md text-[10px] font-black text-white ${res.score > 50 ? 'bg-emerald-500' : 'bg-red-600 shadow-lg shadow-red-200'}`}>
-                                {res.score > 50 ? 'PASS' : 'RISK'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="p-4 flex justify-between items-center">
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Confidence Index</p>
-                              <p className={`text-xl font-black ${res.score > 50 ? 'text-slate-800' : 'text-red-600'}`}>{res.score}%</p>
-                            </div>
-                            <button className="text-[10px] font-bold text-blue-600 hover:underline">DETAILS →</button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-center gap-4 text-xs font-bold text-slate-500 italic">
+                  <span>&gt; CRAWLED_ASSETS_INDEX</span>
+                  <div className="h-[1px] flex-1 bg-slate-800"></div>
+                </div>
+                {urlResults.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {urlResults.map((res, index) => (
+                      <div key={index} className="bg-slate-900 border border-slate-800 group hover:border-blue-500 transition-all">
+                        <div className="aspect-square relative overflow-hidden bg-black">
+                          <img src={res.url} alt="Scanned" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                          <div className={`absolute bottom-0 left-0 w-full p-2 text-[9px] font-black text-white text-center ${res.score > 50 ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                            {res.score > 50 ? 'SECURE' : 'DETECTED'} / {res.score}%
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    !isAnalyzing && <div className="text-center py-32 text-slate-300 font-medium italic border-2 border-dashed border-slate-100 rounded-3xl">입력된 도메인을 스캔하십시오.</div>
-                  )}
-                </div>
-              )}
-            </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !isAnalyzing && <div className="text-center py-20 opacity-20 text-[10px] tracking-[0.5em]">NETWORK_IDLE</div>
+                )}
+              </div>
+            )}
           </div>
         </section>
       </main>
 
-      <footer className="max-w-7xl mx-auto mt-20 pt-10 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-        <p className="text-slate-400 text-xs font-medium">© 2024 VeriScan Global Security Operations. All Rights Reserved.</p>
-        <div className="flex gap-6 text-slate-400 text-xs font-bold uppercase tracking-widest">
-          <span className="hover:text-blue-600 cursor-pointer">Security Protocol</span>
-          <span className="hover:text-blue-600 cursor-pointer">API Access</span>
-          <span className="hover:text-blue-600 cursor-pointer">Network Status: <span className="text-emerald-500">Online</span></span>
-        </div>
+      <footer className="max-w-7xl mx-auto mt-12 border-t border-slate-900 pt-6 flex justify-between text-[9px] text-slate-600 font-bold tracking-widest uppercase">
+        <div>System_Auth: X-TRACE-ENCRYPTION-ACTIVE</div>
+        <div>Encrypted_Connection: TLS_1.3_AES_256_GCM</div>
       </footer>
     </div>
   );
