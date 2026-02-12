@@ -97,30 +97,34 @@ function App() {
   };
 
   // [기능 2] URL 분석 실행
-  const handleAnalyzeUrl = async () => {
-    if (!urlInput) return alert("분석할 URL을 입력해주세요! 🔗");
-    setIsAnalyzing(true);
-    const timer = startProgress(10); // URL 스캔은 이미지 개수에 따라 다르므로 기본 10초 설정
+const handleAnalyzeUrl = async () => {
+  if (!urlInput) return alert("분석할 URL을 입력해주세요! 🔗");
+  setIsAnalyzing(true);
+  const timer = startProgress(10); 
 
-    try {
-      const app = await client("euntaejang/deepfake");
-      // 백엔드에 /predict_url 엔드포인트가 있어야 합니다.
-      const apiResult = await app.predict("/predict_url", [urlInput]);
+  try {
+    const app = await client("euntaejang/deepfake");
+    const apiResult = await app.predict("/predict_url", [urlInput]);
 
-      clearInterval(timer);
-      setProgress(100);
-      
-      // apiResult.data가 분석된 이미지 객체들의 배열이라고 가정
-      // 예: [{url: '...', score: 85, isReal: true}, ...]
-      setUrlResults(apiResult.data[0]); 
-    } catch (error) {
-      clearInterval(timer);
-      alert("URL 접속에 실패했거나 이미지를 찾을 수 없습니다.");
-    } finally {
-      setIsAnalyzing(false);
+    clearInterval(timer);
+    setProgress(100);
+    
+    // 핵심: Gradio는 결과를 리스트로 감싸서 보내므로 [0]을 꼭 붙여야 합니다.
+    const resultData = apiResult.data[0];
+    
+    if (resultData && resultData.length > 0) {
+      setUrlResults(resultData);
+    } else {
+      alert("해당 페이지에서 분석 가능한 얼굴 이미지를 찾지 못했습니다. 🧐");
+      setUrlResults([]);
     }
-  };
-
+  } catch (error) {
+    clearInterval(timer);
+    alert("URL 스캔 중 오류가 발생했습니다. 주소를 다시 확인해주세요.");
+  } finally {
+    setIsAnalyzing(false);
+  }
+};
   const displayScore = analysisResult.realConfidence !== null ? Math.floor(analysisResult.realConfidence) : null;
 
   return (
