@@ -14,15 +14,16 @@ function App() {
   const [inputUrl, setInputUrl] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
 
+  // 분석 결과 상태 관리 (이미지 2개와 그리드 이미지를 구분)
   const [analysisResult, setAnalysisResult] = useState({
-    graphImg: null,
-    freqImg: null,
-    detectImg: null,
+    srmImg: null,      // SRM 도넛 그래프
+    pixelImg: null,    // Pixel 도넛 그래프
+    graphImg: null,    // 비디오용 타임라인 그래프
+    urlGridImg: null,  // URL 분석용 그리드 이미지
     realConfidence: null,
     comment: ""
   });
 
-  // 기존 뉴스 데이터 (유지)
   const newsData = [
     { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
     { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
@@ -36,19 +37,14 @@ function App() {
       setSelectedFile(URL.createObjectURL(file));
       const isVideo = file.type.startsWith('video');
       setFileType(isVideo ? 'video' : 'image');
-      if (isVideo) {
-        const video = document.createElement('video');
-        video.preload = 'metadata';
-        video.onloadedmetadata = () => setVideoDuration(video.duration);
-        video.src = URL.createObjectURL(file);
-      }
-      setAnalysisResult({ graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" });
+      // 초기화
+      setAnalysisResult({ srmImg: null, pixelImg: null, graphImg: null, urlGridImg: null, realConfidence: null, comment: "" });
       setProgress(0);
     }
   };
 
   // ------------------------------------------------
-  // 요청사항: URL 이미지 추출 및 서버 추론 연동
+  // URL 분석: /extract_url 엔드포인트 호출
   // ------------------------------------------------
   const handleUrlAnalyze = async () => {
     if (!inputUrl) {
@@ -57,30 +53,32 @@ function App() {
     }
     setIsExtracting(true);
     setProgress(10);
-    setAnalysisResult({ graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" });
+    setAnalysisResult({ srmImg: null, pixelImg: null, graphImg: null, urlGridImg: null, realConfidence: null, comment: "" });
 
     try {
       const app = await client("euntaejang/deepfake");
-      // app.py의 /extract_url 엔드포인트 호출 (추론 결과 포함)
       const result = await app.predict("/extract_url", [inputUrl]);
       
       if (result.data) {
         setProgress(100);
         setAnalysisResult({
           realConfidence: result.data[0],
-          freqImg: result.data[1]?.url, // 서버에서 생성한 '라벨링된 그리드 이미지'
-          comment: `[원격분석완료] ${result.data[2]} / 평균 신뢰도: ${result.data[0]}%`
+          urlGridImg: result.data[1]?.url, // 서버의 그리드 이미지 경로
+          comment: `[원격분석완료] ${result.data[2]}`
         });
       }
     } catch (error) {
       console.error(error);
-      alert("URL 분석 실패");
+      alert("URL 분석 실패: " + (error.message || "서버 응답 없음"));
       setProgress(0);
     } finally {
       setIsExtracting(false);
     }
   };
 
+  // ------------------------------------------------
+  // 로컬 파일 분석: /predict 또는 /predict_video 호출
+  // ------------------------------------------------
   const handleAnalyze = async () => {
     if (!rawFile) {
       alert("분석할 증거물을 확보하십시오.");
@@ -89,51 +87,33 @@ function App() {
     setIsAnalyzing(true);
     setProgress(0);
 
-    const estimatedTime = fileType === 'video' ? Math.max(videoDuration * 2, 8) : 5; 
-    const intervalTime = 100;
-    const totalSteps = (estimatedTime * 1000) / intervalTime;
-    const stepIncrement = 100 / totalSteps;
-
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 95) {
-          clearInterval(timer);
-          return 95;
-        }
-        return prev + stepIncrement;
-      });
-    }, intervalTime);
-
     try {
       const app = await client("euntaejang/deepfake");
       const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
       const apiResult = await app.predict(endpoint, [rawFile]);
 
-      clearInterval(timer);
       setProgress(100);
 
       if (fileType === 'video') {
         setAnalysisResult({
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
-          comment: apiResult.data[0] > 50 
-            ? "[판독완료] 데이터 무결성 검증됨." 
-            : "[위험] 조작 징후 포착."
+          comment: "[영상 타임라인 분석 완료] 데이터 무결성 검증됨."
         });
       } else {
+        // 이미지 결과: [최종점수, SRM도넛, Pixel도넛]
         setAnalysisResult({
           realConfidence: apiResult.data[0],
-          freqImg: apiResult.data[1]?.url,
-          detectImg: apiResult.data[2]?.url,
+          srmImg: apiResult.data[1]?.url,
+          pixelImg: apiResult.data[2]?.url,
           comment: apiResult.data[0] > 50 
-            ? "[판독완료] 픽셀 무결성 통과." 
-            : "[경고] 생성 노이즈 패턴 감지."
+            ? "[판독완료] 픽셀 및 주파수 무결성 통과." 
+            : "[경고] 생성 노이즈 및 주파수 변조 감지."
         });
       }
     } catch (error) {
-      clearInterval(timer);
       setProgress(0);
-      alert("분석 오류");
+      alert(error.message || "분석 중 오류가 발생했습니다. (얼굴 미검출 등)");
     } finally {
       setIsAnalyzing(false);
     }
@@ -149,9 +129,7 @@ function App() {
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
             <span className="text-black text-xl font-black">NPA</span>
           </div>
-          <div>
-            <h1 className="text-4xl font-black tracking-tighter uppercase">Digital Forensic Terminal</h1>
-          </div>
+          <h1 className="text-4xl font-black tracking-tighter uppercase">Digital Forensic Terminal</h1>
         </div>
         <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
           REBOOT
@@ -159,7 +137,7 @@ function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* LEFT: EVIDENCE */}
+        {/* LEFT: EVIDENCE INPUT */}
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
@@ -182,7 +160,7 @@ function App() {
                 <input 
                   type="text" 
                   placeholder="INPUT TARGET URL..."
-                  className="bg-black border-2 border-[#00f2ff]/50 p-4 outline-none text-white"
+                  className="bg-black border-2 border-[#00f2ff]/50 p-4 outline-none text-white font-mono"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
                 />
@@ -197,35 +175,25 @@ function App() {
             {isAnalyzing ? "SCANNING..." : "EXECUTE SCAN"}
           </button>
 
-          {/* 기존 뉴스 데이터 영역 (그대로 유지) */}
-          <div className="grid grid-cols-3 gap-4">
-            {newsData.map((news) => (
-              <div key={news.id} className="border border-[#00f2ff]/30 bg-black/40 p-2">
-                <img src={news.src} alt={news.label} className="w-full h-24 object-cover mb-2 grayscale hover:grayscale-0 cursor-pointer" />
-                <p className="text-[10px] text-center font-mono opacity-60">{news.label}</p>
-              </div>
-            ))}
-          </div>
-
           <div className="p-6 bg-black/80 border-l-8 border-[#00f2ff]">
             <h3 className="text-[#00f2ff] text-xl font-bold mb-2 underline">INVESTIGATOR LOG</h3>
             <p className="text-gray-200 font-mono italic">{analysisResult.comment || "> SYSTEM IDLE..."}</p>
           </div>
         </section>
 
-        {/* RIGHT: REPORT */}
+        {/* RIGHT: ANALYSIS REPORT */}
         <section className="lg:col-span-7 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col h-full shadow-2xl relative">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[600px] shadow-2xl relative">
             <div className="flex justify-between items-start mb-12">
               <div>
-                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2">Confidence</p>
+                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-widest">Reliability Score</p>
                 <div className="flex items-baseline gap-4">
                   <span className="text-9xl font-black italic text-[#00f2ff]">{displayScore ?? "00"}</span>
                   <span className="text-4xl font-bold">%</span>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">Verdict</p>
+                <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">Final Verdict</p>
                 {displayScore !== null && (
                   <div className={`px-8 py-4 text-2xl font-black border-4 ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
                     {displayScore > 50 ? 'VERIFIED' : 'FORGERY'}
@@ -235,25 +203,53 @@ function App() {
             </div>
 
             {/* PROGRESS BAR */}
-            <div className="mb-12">
-              <div className="h-4 bg-black border-2 border-[#00f2ff]/30 p-[2px]">
-                <div className="h-full bg-[#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
+            <div className="mb-10">
+              <div className="h-2 bg-black border border-[#00f2ff]/30">
+                <div className="h-full bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
               </div>
             </div>
 
-            {/* VISUALIZATION 영역 (요구사항: URL 이미지들이 그래프 위치에 출력됨) */}
-            <div className="grid grid-cols-1 gap-6 flex-grow">
-              <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
-                <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase">
-                  {isUrlMode ? "Remote Asset Grid Inspection" : "Analysis Visualization"}
-                </p>
-                <div className="aspect-video bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
-                  {analysisResult.freqImg || analysisResult.graphImg ? (
-                    <img src={analysisResult.freqImg || analysisResult.graphImg} className="w-full h-full object-contain" alt="Result" />
-                  ) : (
-                    <span className="text-sm opacity-20 uppercase tracking-[0.3em]">Awaiting Scan Data...</span>
-                  )}
-                </div>
+            {/* 시각화 결과 영역 (요구사항 반영) */}
+            <div className="flex-grow">
+              <p className="text-sm mb-4 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-tighter">
+                {isUrlMode ? "Remote Asset Grid Inspection" : "Dual-Stream Analysis Visualization"}
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                {/* 1. 로컬 이미지 분석 시: 도넛 그래프 2개 나란히 출력 */}
+                {!isUrlMode && fileType === 'image' && analysisResult.srmImg && (
+                  <>
+                    <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono">CHANNEL A: SRM FREQUENCY</span>
+                      <img src={analysisResult.srmImg} className="w-full h-auto object-contain" alt="SRM Result" />
+                    </div>
+                    <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono">CHANNEL B: PIXEL ANALYSIS</span>
+                      <img src={analysisResult.pixelImg} className="w-full h-auto object-contain" alt="Pixel Result" />
+                    </div>
+                  </>
+                )}
+
+                {/* 2. 비디오 분석 시: 타임라인 그래프 크게 출력 */}
+                {!isUrlMode && fileType === 'video' && analysisResult.graphImg && (
+                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
+                    <img src={analysisResult.graphImg} className="w-full h-auto object-contain" alt="Timeline Graph" />
+                  </div>
+                )}
+
+                {/* 3. URL 분석 시: 그리드 이미지 크게 출력 */}
+                {isUrlMode && analysisResult.urlGridImg && (
+                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4 overflow-auto">
+                    <img src={analysisResult.urlGridImg} className="w-full h-auto object-contain" alt="URL Grid Inspection" />
+                  </div>
+                )}
+
+                {/* 데이터가 없을 때 표시되는 스켈레톤 UI */}
+                {!analysisResult.srmImg && !analysisResult.graphImg && !analysisResult.urlGridImg && (
+                  <div className="col-span-2 aspect-video bg-gray-900/50 border border-dashed border-[#00f2ff]/10 flex items-center justify-center">
+                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">Awaiting Scan Data...</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
