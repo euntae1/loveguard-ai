@@ -120,7 +120,7 @@ function App() {
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
             <span className="text-black text-xl font-black">dbdb</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">사이버 위변조 합동대응본부</h1>
+          <h1 className="text-4xl font-black tracking-tighter uppercase">사이버 위변조 수사본부</h1>
         </div>
         <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
           새로고침
@@ -197,7 +197,7 @@ function App() {
                 <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">진위여부</p>
                 {displayScore !== null && (
                   <div className={`px-8 py-4 text-2xl font-black border-4 ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
-                    {displayScore > 50 ? 'VERIFIED' : 'FORGERY'}
+                    {displayScore > 50 ? '통과' : '검거'}
                   </div>
                 )}
               </div>
@@ -211,18 +211,18 @@ function App() {
 
             <div className="flex-grow">
               <p className="text-sm mb-4 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-tighter">
-                {isUrlMode ? "Remote Asset Grid Inspection" : "상황실 메인 스크린"}
+                상황실 메인 스크린
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
                 {!isUrlMode && fileType === 'image' && analysisResult.srmImg && (
                   <>
                     <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
-                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">SRM Frequency Analysis</span>
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">주파수 분석결과</span>
                       <img src={analysisResult.srmImg} className="w-full h-auto object-contain" />
                     </div>
                     <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
-                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">Pixel Texture Analysis</span>
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">이미지 분석결과</span>
                       <img src={analysisResult.pixelImg} className="w-full h-auto object-contain" />
                     </div>
                   </>
