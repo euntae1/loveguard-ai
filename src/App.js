@@ -140,7 +140,7 @@ function App() {
                 {selectedFile ? (
                   fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} className="w-full h-full object-contain" />
                 ) : (
-                  <p className="text-[#00f2ff]/50 font-bold text-center">CLICK TO UPLOAD EVIDENCE</p>
+                  <p className="text-[#00f2ff]/50 font-bold text-center">증거물을 업로드하세요..</p>
                 )}
                 {isAnalyzing && <div className="scan-line"></div>}
                 <input type="file" className="hidden" onChange={handleFileChange} />
@@ -178,7 +178,7 @@ function App() {
 
           {/* [수정] INVESTIGATOR LOG 크기 축소 (p-6 -> p-4, text-xl -> text-lg) */}
           <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
-            <h3 className="text-[#00f2ff] text-lg font-bold mb-1 underline">INVESTIGATOR LOG</h3>
+            <h3 className="text-[#00f2ff] text-lg font-bold mb-1 underline">AI 분석관의 한마디</h3>
             <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> 가짜는 반드시 흔적을 남깁니다."}</p>
           </div>
         </section>
