@@ -256,7 +256,7 @@ function App() {
 
             <div className="flex-grow">
               <p className="text-sm mb-4 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-tighter">
-                상황실 메인 비디오 월 (Video Wall)
+                상황실 메인 스크린
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
@@ -287,7 +287,7 @@ function App() {
 
                 {!analysisResult.srmImg && !analysisResult.graphImg && !analysisResult.urlGridImg && (
                   <div className="col-span-2 aspect-video bg-gray-900/50 border border-dashed border-[#00f2ff]/10 flex items-center justify-center">
-                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">비디오 월 신호 대기 중...</span>
+                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">디지털 판독 대기중...</span>
                   </div>
                 )}
               </div>
