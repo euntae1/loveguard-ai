@@ -120,10 +120,10 @@ function App() {
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
             <span className="text-black text-xl font-black">dbdb</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">Digital Forensic Terminal</h1>
+          <h1 className="text-4xl font-black tracking-tighter uppercase">사이버 위변조 합동대응본부</h1>
         </div>
         <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
-          REBOOT
+          새로고침
         </button>
       </header>
 
@@ -131,8 +131,8 @@ function App() {
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button onClick={() => setIsUrlMode(false)} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>LOCAL</button>
-              <button onClick={() => setIsUrlMode(true)} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL</button>
+              <button onClick={() => setIsUrlMode(false)} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상</button>
+              <button onClick={() => setIsUrlMode(true)} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL링크</button>
             </div>
 
             {!isUrlMode ? (
@@ -149,13 +149,13 @@ function App() {
               <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center gap-5">
                 <input 
                   type="text" 
-                  placeholder="INPUT TARGET URL..."
+                  placeholder="url을 넣으세요..."
                   className="bg-black border-2 border-[#00f2ff]/50 p-4 outline-none text-white font-mono"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
                 />
                 <button onClick={handleUrlAnalyze} disabled={isExtracting} className="bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all disabled:bg-gray-600">
-                  {isExtracting ? "ANALYZING..." : "RUN REMOTE SCAN"}
+                  {isExtracting ? "ANALYZING..." : "해당 url로 수사팀 투입하기 "}
                 </button>
               </div>
             )}
@@ -163,7 +163,7 @@ function App() {
 
           {/* [수정] EXECUTE SCAN 버튼 크기 축소 (py-6 -> py-4, text-2xl -> text-xl) */}
           <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
-            {isAnalyzing ? "SCANNING..." : "EXECUTE SCAN"}
+            {isAnalyzing ? "SCANNING..." : "판별하기"}
           </button>
 
           {/* [수정] newsData: 컬러로 변경 및 이미지 크기 대폭 확대 (h-16 -> h-32) */}
@@ -179,7 +179,7 @@ function App() {
           {/* [수정] INVESTIGATOR LOG 크기 축소 (p-6 -> p-4, text-xl -> text-lg) */}
           <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
             <h3 className="text-[#00f2ff] text-lg font-bold mb-1 underline">INVESTIGATOR LOG</h3>
-            <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> SYSTEM IDLE..."}</p>
+            <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> 가짜는 반드시 흔적을 남깁니다."}</p>
           </div>
         </section>
 
@@ -187,14 +187,14 @@ function App() {
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[600px] shadow-2xl relative">
             <div className="flex justify-between items-start mb-12">
               <div>
-                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-widest">Reliability Score</p>
+                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-widest">신뢰도</p>
                 <div className="flex items-baseline gap-4">
                   <span className="text-9xl font-black italic text-[#00f2ff]">{displayScore ?? "00"}</span>
                   <span className="text-4xl font-bold">%</span>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">Final Verdict</p>
+                <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">진위여부</p>
                 {displayScore !== null && (
                   <div className={`px-8 py-4 text-2xl font-black border-4 ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
                     {displayScore > 50 ? 'VERIFIED' : 'FORGERY'}
@@ -211,7 +211,7 @@ function App() {
 
             <div className="flex-grow">
               <p className="text-sm mb-4 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-tighter">
-                {isUrlMode ? "Remote Asset Grid Inspection" : "Dual-Stream Analysis Visualization"}
+                {isUrlMode ? "Remote Asset Grid Inspection" : "상황실 메인 스크린"}
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
@@ -242,7 +242,7 @@ function App() {
 
                 {!analysisResult.srmImg && !analysisResult.graphImg && !analysisResult.urlGridImg && (
                   <div className="col-span-2 aspect-video bg-gray-900/50 border border-dashed border-[#00f2ff]/10 flex items-center justify-center">
-                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">Awaiting Scan Data...</span>
+                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">스캔 데이터를 기다는중..</span>
                   </div>
                 )}
               </div>
