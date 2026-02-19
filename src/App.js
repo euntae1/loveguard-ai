@@ -14,17 +14,16 @@ function App() {
   const [inputUrl, setInputUrl] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
 
-  // 분석 결과 상태 관리
   const [analysisResult, setAnalysisResult] = useState({
-    srmImg: null,      // SRM 도넛 그래프
-    pixelImg: null,    // Pixel 도넛 그래프
-    graphImg: null,    // 비디오용 타임라인 그래프
-    urlGridImg: null,  // URL 분석용 그리드 이미지
+    srmImg: null,
+    pixelImg: null,
+    graphImg: null,
+    urlGridImg: null,
     realConfidence: null,
     comment: ""
   });
 
-  // 사용하지 않던 newsData를 화면 하단에 렌더링하도록 유지하여 에러 방지
+  // 컬러 이미지 출력을 위해 grayscale 제거 및 크기 조절 예정
   const newsData = [
     { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
     { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
@@ -38,7 +37,6 @@ function App() {
       setSelectedFile(URL.createObjectURL(file));
       const isVideo = file.type.startsWith('video');
       setFileType(isVideo ? 'video' : 'image');
-      // 초기화
       setAnalysisResult({ srmImg: null, pixelImg: null, graphImg: null, urlGridImg: null, realConfidence: null, comment: "" });
       setProgress(0);
     }
@@ -60,9 +58,6 @@ function App() {
       if (result.data) {
         setProgress(100);
         setAnalysisResult({
-          srmImg: null,
-          pixelImg: null,
-          graphImg: null,
           realConfidence: result.data[0],
           urlGridImg: result.data[1]?.url,
           comment: `[원격분석완료] ${result.data[2]}`
@@ -94,17 +89,12 @@ function App() {
 
       if (fileType === 'video') {
         setAnalysisResult({
-          srmImg: null,
-          pixelImg: null,
-          urlGridImg: null,
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
           comment: "[영상 타임라인 분석 완료] 데이터 무결성 검증됨."
         });
       } else {
         setAnalysisResult({
-          graphImg: null,
-          urlGridImg: null,
           realConfidence: apiResult.data[0],
           srmImg: apiResult.data[1]?.url,
           pixelImg: apiResult.data[2]?.url,
@@ -115,7 +105,7 @@ function App() {
       }
     } catch (error) {
       setProgress(0);
-      alert(error.message || "분석 중 오류가 발생했습니다. (얼굴 미검출 등)");
+      alert(error.message || "분석 중 오류가 발생했습니다.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -125,11 +115,10 @@ function App() {
 
   return (
     <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
-      {/* HEADER */}
       <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6">
         <div className="flex items-center gap-5">
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
-            <span className="text-black text-xl font-black">NPA</span>
+            <span className="text-black text-xl font-black">dbdb</span>
           </div>
           <h1 className="text-4xl font-black tracking-tighter uppercase">Digital Forensic Terminal</h1>
         </div>
@@ -151,7 +140,7 @@ function App() {
                 {selectedFile ? (
                   fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} className="w-full h-full object-contain" />
                 ) : (
-                  <p className="text-[#00f2ff]/50 font-bold">CLICK TO UPLOAD EVIDENCE</p>
+                  <p className="text-[#00f2ff]/50 font-bold text-center">CLICK TO UPLOAD EVIDENCE</p>
                 )}
                 {isAnalyzing && <div className="scan-line"></div>}
                 <input type="file" className="hidden" onChange={handleFileChange} />
@@ -166,29 +155,31 @@ function App() {
                   onChange={(e) => setInputUrl(e.target.value)}
                 />
                 <button onClick={handleUrlAnalyze} disabled={isExtracting} className="bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all disabled:bg-gray-600">
-                  {isExtracting ? "ANALYZING REMOTE ASSETS..." : "RUN REMOTE SCAN"}
+                  {isExtracting ? "ANALYZING..." : "RUN REMOTE SCAN"}
                 </button>
               </div>
             )}
           </div>
 
-          <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-6 font-black text-2xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
+          {/* [수정] EXECUTE SCAN 버튼 크기 축소 (py-6 -> py-4, text-2xl -> text-xl) */}
+          <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
             {isAnalyzing ? "SCANNING..." : "EXECUTE SCAN"}
           </button>
 
-          {/* newsData 사용부 추가 (ESLint 에러 방지) */}
+          {/* [수정] newsData: 컬러로 변경 및 이미지 크기 대폭 확대 (h-16 -> h-32) */}
           <div className="grid grid-cols-3 gap-4">
             {newsData.map((news) => (
-              <div key={news.id} className="border border-[#00f2ff]/30 bg-black/40 p-2">
-                <img src={news.src} className="w-full h-16 object-cover mb-1 grayscale opacity-50" />
-                <p className="text-[8px] text-center font-mono">{news.label}</p>
+              <div key={news.id} className="border-2 border-[#00f2ff]/30 bg-black shadow-lg">
+                <img src={news.src} className="w-full h-32 object-cover" />
+                <p className="text-[10px] text-center font-bold py-1 bg-[#00f2ff]/10">{news.label}</p>
               </div>
             ))}
           </div>
 
-          <div className="p-6 bg-black/80 border-l-8 border-[#00f2ff]">
-            <h3 className="text-[#00f2ff] text-xl font-bold mb-2 underline">INVESTIGATOR LOG</h3>
-            <p className="text-gray-200 font-mono italic">{analysisResult.comment || "> SYSTEM IDLE..."}</p>
+          {/* [수정] INVESTIGATOR LOG 크기 축소 (p-6 -> p-4, text-xl -> text-lg) */}
+          <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
+            <h3 className="text-[#00f2ff] text-lg font-bold mb-1 underline">INVESTIGATOR LOG</h3>
+            <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> SYSTEM IDLE..."}</p>
           </div>
         </section>
 
@@ -227,11 +218,11 @@ function App() {
                 {!isUrlMode && fileType === 'image' && analysisResult.srmImg && (
                   <>
                     <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
-                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono">CHANNEL A: SRM FREQUENCY</span>
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">SRM Frequency Analysis</span>
                       <img src={analysisResult.srmImg} className="w-full h-auto object-contain" />
                     </div>
                     <div className="border border-[#00f2ff]/20 bg-black/40 p-4 flex flex-col items-center">
-                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono">CHANNEL B: PIXEL ANALYSIS</span>
+                      <span className="text-[10px] text-[#00f2ff]/50 mb-2 font-mono uppercase tracking-widest">Pixel Texture Analysis</span>
                       <img src={analysisResult.pixelImg} className="w-full h-auto object-contain" />
                     </div>
                   </>
