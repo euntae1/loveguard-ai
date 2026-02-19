@@ -140,7 +140,7 @@ function App() {
     } catch (error) {
       clearInterval(progressTimer.current);
       setProgress(0);
-      alert("분석 중 오류 발생");
+      alert("얼굴을 검출할 수 없습니다.");
     } finally {
       setIsAnalyzing(false);
     }
