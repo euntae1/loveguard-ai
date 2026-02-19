@@ -12,7 +12,6 @@ function App() {
   
   const [isUrlMode, setIsUrlMode] = useState(false);
   const [inputUrl, setInputUrl] = useState("");
-  const [extractedImages, setExtractedImages] = useState([]); // URL에서 추출된 이미지들
   const [isExtracting, setIsExtracting] = useState(false);
 
   const [analysisResult, setAnalysisResult] = useState({
@@ -23,7 +22,7 @@ function App() {
     comment: ""
   });
 
-  // 뉴스 데이터 (이미지 경로 설정)
+  // 기존 뉴스 데이터 (유지)
   const newsData = [
     { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
     { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
@@ -48,28 +47,35 @@ function App() {
     }
   };
 
-  // -------------------------------
-  // URL 이미지 추출 함수 (추론은 하지 않음)
-  // -------------------------------
-  const handleUrlExtract = async () => {
+  // ------------------------------------------------
+  // 요청사항: URL 이미지 추출 및 서버 추론 연동
+  // ------------------------------------------------
+  const handleUrlAnalyze = async () => {
     if (!inputUrl) {
       alert("타겟 URL을 입력하십시오.");
       return;
     }
     setIsExtracting(true);
-    setExtractedImages([]);
+    setProgress(10);
+    setAnalysisResult({ graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" });
 
     try {
       const app = await client("euntaejang/deepfake");
+      // app.py의 /extract_url 엔드포인트 호출 (추론 결과 포함)
       const result = await app.predict("/extract_url", [inputUrl]);
       
-      // result.data[0] 에 이미지 URL 배열이 들어있음
-      if (result.data && result.data[0]) {
-        setExtractedImages(result.data[0]);
+      if (result.data) {
+        setProgress(100);
+        setAnalysisResult({
+          realConfidence: result.data[0],
+          freqImg: result.data[1]?.url, // 서버에서 생성한 '라벨링된 그리드 이미지'
+          comment: `[원격분석완료] ${result.data[2]} / 평균 신뢰도: ${result.data[0]}%`
+        });
       }
     } catch (error) {
       console.error(error);
-      alert("URL 자산 추출 실패: 서버 연결을 확인하십시오.");
+      alert("URL 분석 실패");
+      setProgress(0);
     } finally {
       setIsExtracting(false);
     }
@@ -111,8 +117,8 @@ function App() {
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
           comment: apiResult.data[0] > 50 
-            ? "[판독완료] 데이터 무결성 검증됨. 조작 흔적 없음." 
-            : "[위험] 인위적 프레임 변조 및 합성 징후 포착."
+            ? "[판독완료] 데이터 무결성 검증됨." 
+            : "[위험] 조작 징후 포착."
         });
       } else {
         setAnalysisResult({
@@ -120,14 +126,14 @@ function App() {
           freqImg: apiResult.data[1]?.url,
           detectImg: apiResult.data[2]?.url,
           comment: apiResult.data[0] > 50 
-            ? "[판독완료] 픽셀 무결성 통과. 정상 이미지입니다." 
-            : "[경고] 딥러닝 기반 생성 노이즈 패턴이 감지됨."
+            ? "[판독완료] 픽셀 무결성 통과." 
+            : "[경고] 생성 노이즈 패턴 감지."
         });
       }
     } catch (error) {
       clearInterval(timer);
       setProgress(0);
-      alert("분석 오류 발생");
+      alert("분석 오류");
     } finally {
       setIsAnalyzing(false);
     }
@@ -138,131 +144,91 @@ function App() {
   return (
     <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
       {/* HEADER */}
-      <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6 shadow-[0_0_20px_rgba(0,242,255,0.4)]">
+      <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6">
         <div className="flex items-center gap-5">
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
             <span className="text-black text-xl font-black">NPA</span>
           </div>
           <div>
-            <h1 className="text-4xl font-black tracking-tighter">DIGITAL FORENSIC ANALYSIS TERMINAL</h1>
-            <p className="text-sm text-[#00f2ff]/70 tracking-[0.3em]">UNIT CODE: 0429-DEEPFAKE-DETECTOR</p>
+            <h1 className="text-4xl font-black tracking-tighter uppercase">Digital Forensic Terminal</h1>
           </div>
         </div>
-        <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all text-lg font-black italic">
-          REBOOT SYSTEM
+        <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
+          REBOOT
         </button>
       </header>
 
       <main className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
-        
-        {/* LEFT: EVIDENCE SECTION */}
+        {/* LEFT: EVIDENCE */}
         <section className="lg:col-span-5 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 relative shadow-inner">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button 
-                onClick={() => setIsUrlMode(false)}
-                className={`flex-1 py-3 text-lg font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10 text-white' : 'border-transparent text-gray-500'}`}
-              >
-                LOCAL FILE
-              </button>
-              <button 
-                onClick={() => setIsUrlMode(true)}
-                className={`flex-1 py-3 text-lg font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10 text-white' : 'border-transparent text-gray-500'}`}
-              >
-                NETWORK URL
-              </button>
+              <button onClick={() => setIsUrlMode(false)} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>LOCAL</button>
+              <button onClick={() => setIsUrlMode(true)} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL</button>
             </div>
 
             {!isUrlMode ? (
-              <label htmlFor="file-upload" className="relative aspect-video bg-black/70 border-2 border-dashed border-[#00f2ff]/50 flex flex-col items-center justify-center cursor-pointer group hover:border-[#00f2ff] transition-all">
+              <label className="relative aspect-video bg-black/70 border-2 border-dashed border-[#00f2ff]/50 flex flex-col items-center justify-center cursor-pointer overflow-hidden">
                 {selectedFile ? (
-                  fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} alt="Evidence" className="w-full h-full object-contain" />
+                  fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} className="w-full h-full object-contain" alt="Evidence" />
                 ) : (
-                  <div className="text-center">
-                    <p className="text-2xl font-bold mb-2 text-[#00f2ff]/50">SECURE UPLOAD AREA</p>
-                    <p className="text-sm text-gray-500 tracking-widest">DRAG AND DROP EVIDENCE</p>
-                  </div>
+                  <p className="text-[#00f2ff]/50 font-bold">CLICK TO UPLOAD EVIDENCE</p>
                 )}
                 {isAnalyzing && <div className="scan-line"></div>}
-                <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} />
+                <input type="file" className="hidden" onChange={handleFileChange} />
               </label>
             ) : (
-              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center gap-5 overflow-y-auto">
+              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center gap-5">
                 <input 
                   type="text" 
                   placeholder="INPUT TARGET URL..."
-                  className="bg-black border-2 border-[#00f2ff]/50 p-4 text-xl outline-none focus:border-[#00f2ff] text-white"
+                  className="bg-black border-2 border-[#00f2ff]/50 p-4 outline-none text-white"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
                 />
-                <button 
-                  onClick={handleUrlExtract}
-                  disabled={isExtracting}
-                  className="bg-[#00f2ff] text-black font-black py-4 text-xl hover:bg-white transition-all shadow-[0_0_15px_#00f2ff] disabled:bg-gray-600"
-                >
-                  {isExtracting ? "EXTRACTING ASSETS..." : "RUN REMOTE ASSET EXTRACTION"}
+                <button onClick={handleUrlAnalyze} disabled={isExtracting} className="bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all disabled:bg-gray-600">
+                  {isExtracting ? "ANALYZING REMOTE ASSETS..." : "RUN REMOTE SCAN"}
                 </button>
-
-                {/* 추출된 이미지 목록 렌더링 */}
-                {extractedImages.length > 0 && (
-                  <div className="mt-4 grid grid-cols-4 gap-2 border-t border-[#00f2ff]/30 pt-4">
-                    {extractedImages.map((url, idx) => (
-                      <div key={idx} className="aspect-square border border-[#00f2ff]/30 overflow-hidden hover:border-[#00f2ff] transition-all">
-                        <img src={url} alt="extracted" className="w-full h-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
 
-          <button 
-            onClick={handleAnalyze} 
-            disabled={isAnalyzing || (isUrlMode && !selectedFile)} 
-            className={`w-full py-6 font-black text-2xl tracking-[0.4em] transition-all border-4 ${isAnalyzing ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-transparent border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black shadow-[0_0_20px_rgba(0,242,255,0.2)]'}`}
-          >
-            {isAnalyzing ? "SCANNING DATA..." : "EXECUTE FORENSIC SCAN"}
+          <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-6 font-black text-2xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
+            {isAnalyzing ? "SCANNING..." : "EXECUTE SCAN"}
           </button>
 
-          <div className="p-6 bg-black/80 border-l-8 border-[#00f2ff] shadow-lg">
-            <h3 className="text-[#00f2ff] text-xl font-bold mb-3 underline tracking-tighter">CHIEF INVESTIGATOR'S LOG</h3>
-            <p className="text-gray-200 text-lg leading-relaxed font-mono italic">{analysisResult.comment || "> SYSTEM IDLE: AWAITING INPUT..."}</p>
+          {/* 기존 뉴스 데이터 영역 (그대로 유지) */}
+          <div className="grid grid-cols-3 gap-4">
+            {newsData.map((news) => (
+              <div key={news.id} className="border border-[#00f2ff]/30 bg-black/40 p-2">
+                <img src={news.src} alt={news.label} className="w-full h-24 object-cover mb-2 grayscale hover:grayscale-0 cursor-pointer" />
+                <p className="text-[10px] text-center font-mono opacity-60">{news.label}</p>
+              </div>
+            ))}
           </div>
 
-          {/* NEWS SECTION */}
-          <div className="pt-4 border-t border-[#00f2ff]/20">
-            <p className="text-sm font-bold mb-4 tracking-widest text-[#00f2ff]/60 uppercase">Reference Deepfake Cases</p>
-            <div className="grid grid-cols-3 gap-4">
-              {newsData.map((news) => (
-                <div key={news.id} className="aspect-[4/3] bg-gray-900 border-2 border-white/10 hover:border-[#00f2ff] cursor-pointer relative group overflow-hidden transition-all">
-                  <img src={news.src} alt={news.label} className="w-full h-full object-cover opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
-                  <div className="absolute bottom-2 left-2 text-[10px] bg-[#00f2ff] text-black px-2 font-bold">{news.label}</div>
-                </div>
-              ))}
-            </div>
+          <div className="p-6 bg-black/80 border-l-8 border-[#00f2ff]">
+            <h3 className="text-[#00f2ff] text-xl font-bold mb-2 underline">INVESTIGATOR LOG</h3>
+            <p className="text-gray-200 font-mono italic">{analysisResult.comment || "> SYSTEM IDLE..."}</p>
           </div>
         </section>
 
-        {/* RIGHT: REPORT SECTION */}
+        {/* RIGHT: REPORT */}
         <section className="lg:col-span-7 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 relative h-full flex flex-col shadow-2xl">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col h-full shadow-2xl relative">
             <div className="flex justify-between items-start mb-12">
               <div>
-                <p className="text-lg text-[#00f2ff]/60 uppercase font-bold tracking-widest mb-2">Integrity Confidence</p>
+                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2">Confidence</p>
                 <div className="flex items-baseline gap-4">
-                  <span className="text-9xl font-black italic tracking-tighter text-[#00f2ff] drop-shadow-[0_0_15px_rgba(0,242,255,0.5)]">
-                    {displayScore ?? "00"}
-                  </span>
+                  <span className="text-9xl font-black italic text-[#00f2ff]">{displayScore ?? "00"}</span>
                   <span className="text-4xl font-bold">%</span>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm text-[#00f2ff]/60 mb-4 uppercase font-bold tracking-widest">Final Verdict</p>
+                <p className="text-sm text-[#00f2ff]/60 mb-4 font-bold uppercase">Verdict</p>
                 {displayScore !== null && (
-                  <div className={`px-8 py-4 text-2xl font-black border-4 shadow-[0_0_20px_rgba(0,0,0,0.5)] ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
-                    {displayScore > 50 ? 'VERIFIED: AUTHENTIC' : 'ALERT: FORGERY DETECTED'}
+                  <div className={`px-8 py-4 text-2xl font-black border-4 ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
+                    {displayScore > 50 ? 'VERIFIED' : 'FORGERY'}
                   </div>
                 )}
               </div>
@@ -270,47 +236,25 @@ function App() {
 
             {/* PROGRESS BAR */}
             <div className="mb-12">
-               <div className="flex justify-between text-lg font-bold mb-3">
-                  <span className="tracking-widest">SCANNING FREQUENCY & PIXEL INTEGRITY...</span>
-                  <span>{Math.floor(progress)}%</span>
-               </div>
-               <div className="h-4 bg-black border-2 border-[#00f2ff]/30 p-[2px]">
-                  <div className="h-full bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
-               </div>
-            </div>
-
-            {/* VISUALIZATION */}
-            <div className="grid grid-cols-1 gap-6 flex-grow">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
-                  <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3">FREQUENCY SPECTRUM</p>
-                  <div className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
-                    {fileType === 'video' ? (
-                       analysisResult.graphImg ? <img src={analysisResult.graphImg} className="w-full h-full object-cover" alt="Graph" /> : <span className="text-sm text-gray-700">WAITING...</span>
-                    ) : (
-                       analysisResult.freqImg ? <img src={analysisResult.freqImg} className="w-full h-full object-cover" alt="Freq" /> : <span className="text-sm text-gray-700">WAITING...</span>
-                    )}
-                  </div>
-                </div>
-                <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
-                  <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3">TRACE ANALYSIS</p>
-                  <div className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
-                    {fileType === 'image' && analysisResult.detectImg ? (
-                      <img src={analysisResult.detectImg} className="w-full h-full object-cover" alt="Detect" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center opacity-10">
-                        <div className="w-1/2 h-[2px] bg-[#00f2ff] mb-4 animate-bounce"></div>
-                        <span className="text-xs">SCANNING...</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              <div className="h-4 bg-black border-2 border-[#00f2ff]/30 p-[2px]">
+                <div className="h-full bg-[#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
               </div>
             </div>
-            
-            <div className="mt-8 flex justify-between items-center opacity-40 text-xs font-mono border-t border-[#00f2ff]/20 pt-4">
-              <span>LOCAL_SECURE_SERVER_PORT: 8080</span>
-              <span>LOG_ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
+
+            {/* VISUALIZATION 영역 (요구사항: URL 이미지들이 그래프 위치에 출력됨) */}
+            <div className="grid grid-cols-1 gap-6 flex-grow">
+              <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
+                <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase">
+                  {isUrlMode ? "Remote Asset Grid Inspection" : "Analysis Visualization"}
+                </p>
+                <div className="aspect-video bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
+                  {analysisResult.freqImg || analysisResult.graphImg ? (
+                    <img src={analysisResult.freqImg || analysisResult.graphImg} className="w-full h-full object-contain" alt="Result" />
+                  ) : (
+                    <span className="text-sm opacity-20 uppercase tracking-[0.3em]">Awaiting Scan Data...</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </section>
