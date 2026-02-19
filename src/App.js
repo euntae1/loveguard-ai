@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/alt-text */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { client } from "@gradio/client";
 import './index.css';
 
@@ -9,7 +9,8 @@ function App() {
   const [fileType, setFileType] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
-  
+  const progressTimer = useRef(null); // 타이머 관리를 위한 ref
+
   const [isUrlMode, setIsUrlMode] = useState(false);
   const [inputUrl, setInputUrl] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
@@ -23,12 +24,29 @@ function App() {
     comment: ""
   });
 
-  // 컬러 이미지 출력을 위해 grayscale 제거 및 크기 조절 예정
   const newsData = [
     { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
     { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
     { id: 3, src: "/image/news_3.jpg", label: "EVIDENCE_03" }
   ];
+
+  // 프로그레스 바 로직: 목표 시간(초) 동안 서서히 증가
+  const startProgress = (seconds) => {
+    clearInterval(progressTimer.current);
+    setProgress(0);
+    const interval = 100; // 0.1초마다 업데이트
+    const step = 100 / (seconds * (1000 / interval));
+
+    progressTimer.current = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) { // 응답 대기를 위해 95%에서 멈춤
+          clearInterval(progressTimer.current);
+          return prev;
+        }
+        return prev + step;
+      });
+    }, interval);
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -39,6 +57,7 @@ function App() {
       setFileType(isVideo ? 'video' : 'image');
       setAnalysisResult({ srmImg: null, pixelImg: null, graphImg: null, urlGridImg: null, realConfidence: null, comment: "" });
       setProgress(0);
+      clearInterval(progressTimer.current);
     }
   };
 
@@ -48,15 +67,17 @@ function App() {
       return;
     }
     setIsExtracting(true);
-    setProgress(10);
     setAnalysisResult({ srmImg: null, pixelImg: null, graphImg: null, urlGridImg: null, realConfidence: null, comment: "" });
+    
+    startProgress(10); // URL 모드: 10초 설정
 
     try {
       const app = await client("euntaejang/deepfake");
       const result = await app.predict("/extract_url", [inputUrl]);
       
       if (result.data) {
-        setProgress(100);
+        clearInterval(progressTimer.current);
+        setProgress(100); // 즉시 완료
         setAnalysisResult({
           realConfidence: result.data[0],
           urlGridImg: result.data[1]?.url,
@@ -64,9 +85,9 @@ function App() {
         });
       }
     } catch (error) {
-      console.error(error);
-      alert("URL 분석 실패: " + (error.message || "서버 응답 없음"));
+      clearInterval(progressTimer.current);
       setProgress(0);
+      alert("URL 분석 실패");
     } finally {
       setIsExtracting(false);
     }
@@ -78,13 +99,26 @@ function App() {
       return;
     }
     setIsAnalyzing(true);
-    setProgress(0);
+    
+    // 시간 설정: 이미지는 5초, 동영상은 메타데이터 기반(없으면 기본 20초)
+    if (fileType === 'image') {
+      startProgress(5);
+    } else {
+      // 동영상 소요 시간 계산을 위해 비디오 객체 생성
+      const tempVideo = document.createElement('video');
+      tempVideo.src = selectedFile;
+      tempVideo.onloadedmetadata = () => {
+        const duration = tempVideo.duration || 10;
+        startProgress(duration * 2);
+      };
+    }
 
     try {
       const app = await client("euntaejang/deepfake");
       const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
       const apiResult = await app.predict(endpoint, [rawFile]);
 
+      clearInterval(progressTimer.current);
       setProgress(100);
 
       if (fileType === 'video') {
@@ -104,8 +138,9 @@ function App() {
         });
       }
     } catch (error) {
+      clearInterval(progressTimer.current);
       setProgress(0);
-      alert(error.message || "분석 중 오류가 발생했습니다.");
+      alert("분석 중 오류 발생");
     } finally {
       setIsAnalyzing(false);
     }
@@ -122,7 +157,10 @@ function App() {
           </div>
           <h1 className="text-4xl font-black tracking-tighter uppercase">사이버 위변조 수사본부</h1>
         </div>
-        <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
+        <button onClick={() => {
+          clearInterval(progressTimer.current);
+          window.location.reload();
+        }} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
           새로고침
         </button>
       </header>
@@ -131,8 +169,8 @@ function App() {
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button onClick={() => setIsUrlMode(false)} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상</button>
-              <button onClick={() => setIsUrlMode(true)} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL링크</button>
+              <button onClick={() => { setIsUrlMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상</button>
+              <button onClick={() => { setIsUrlMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL링크</button>
             </div>
 
             {!isUrlMode ? (
@@ -155,18 +193,16 @@ function App() {
                   onChange={(e) => setInputUrl(e.target.value)}
                 />
                 <button onClick={handleUrlAnalyze} disabled={isExtracting} className="bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all disabled:bg-gray-600">
-                  {isExtracting ? "ANALYZING..." : "해당 url로 수사팀 투입하기 "}
+                  {isExtracting ? "수사팀 진입 중..." : "해당 url로 수사팀 투입하기 "}
                 </button>
               </div>
             )}
           </div>
 
-          {/* [수정] EXECUTE SCAN 버튼 크기 축소 (py-6 -> py-4, text-2xl -> text-xl) */}
           <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
-            {isAnalyzing ? "SCANNING..." : "판별하기"}
+            {isAnalyzing ? "데이터 정밀 분석 중..." : "판별하기"}
           </button>
 
-          {/* [수정] newsData: 컬러로 변경 및 이미지 크기 대폭 확대 (h-16 -> h-32) */}
           <div className="grid grid-cols-3 gap-4">
             {newsData.map((news) => (
               <div key={news.id} className="border-2 border-[#00f2ff]/30 bg-black shadow-lg">
@@ -176,7 +212,6 @@ function App() {
             ))}
           </div>
 
-          {/* [수정] INVESTIGATOR LOG 크기 축소 (p-6 -> p-4, text-xl -> text-lg) */}
           <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
             <h3 className="text-[#00f2ff] text-lg font-bold mb-1 underline">AI 분석관의 한마디</h3>
             <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> 가짜는 반드시 흔적을 남깁니다."}</p>
@@ -203,15 +238,25 @@ function App() {
               </div>
             </div>
 
+            {/* [상황판 로딩바] */}
             <div className="mb-10">
-              <div className="h-2 bg-black border border-[#00f2ff]/30">
-                <div className="h-full bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
+              <div className="flex justify-between text-[10px] mb-1 font-mono">
+                <span>ANALYSIS PROGRESS</span>
+                <span>{Math.floor(progress)}%</span>
+              </div>
+              <div className="h-3 bg-black border border-[#00f2ff]/30 relative overflow-hidden">
+                <div 
+                  className="h-full bg-[#00f2ff] shadow-[0_0_15px_#00f2ff] transition-all duration-300 ease-out" 
+                  style={{ width: `${progress}%` }}
+                ></div>
+                {/* 로딩 바 위를 지나가는 광원 효과 추가 */}
+                <div className="absolute top-0 left-0 w-full h-full scan-bar-light"></div>
               </div>
             </div>
 
             <div className="flex-grow">
               <p className="text-sm mb-4 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-tighter">
-                상황실 메인 스크린
+                상황실 메인 비디오 월 (Video Wall)
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
@@ -242,7 +287,7 @@ function App() {
 
                 {!analysisResult.srmImg && !analysisResult.graphImg && !analysisResult.urlGridImg && (
                   <div className="col-span-2 aspect-video bg-gray-900/50 border border-dashed border-[#00f2ff]/10 flex items-center justify-center">
-                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">스캔 데이터를 기다는중..</span>
+                    <span className="text-sm opacity-20 uppercase tracking-[0.4em]">비디오 월 신호 대기 중...</span>
                   </div>
                 )}
               </div>
