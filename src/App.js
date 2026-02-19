@@ -225,7 +225,9 @@ function App() {
                 <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-widest">신뢰도</p>
                 <div className="flex items-baseline gap-4">
                   <span className="text-9xl font-black italic text-[#00f2ff]">{displayScore ?? "00"}</span>
-                  <span className="text-4xl font-bold">%</span>
+                 <span className="text-4xl font-bold">
+                  {isUrlMode ? '개' : '%'}
+                </span>
                 </div>
               </div>
               <div className="text-right">
