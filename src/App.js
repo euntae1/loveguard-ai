@@ -7,9 +7,14 @@ function App() {
   const [rawFile, setRawFile] = useState(null);
   const [fileType, setFileType] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [videoDuration, setVideoDuration] = useState(0); // 영상 길이 저장
-  const [progress, setProgress] = useState(0);          // 로딩바 퍼센트
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [progress, setProgress] = useState(0);
   
+  const [isUrlMode, setIsUrlMode] = useState(false);
+  const [inputUrl, setInputUrl] = useState("");
+  const [extractedImages, setExtractedImages] = useState([]); // URL에서 추출된 이미지들
+  const [isExtracting, setIsExtracting] = useState(false);
+
   const [analysisResult, setAnalysisResult] = useState({
     graphImg: null,
     freqImg: null,
@@ -18,7 +23,13 @@ function App() {
     comment: ""
   });
 
-  // 파일 선택 및 비디오 시간 측정
+  // 뉴스 데이터 (이미지 경로 설정)
+  const newsData = [
+    { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
+    { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
+    { id: 3, src: "/image/news_3.jpg", label: "EVIDENCE_03" }
+  ];
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -26,44 +37,61 @@ function App() {
       setSelectedFile(URL.createObjectURL(file));
       const isVideo = file.type.startsWith('video');
       setFileType(isVideo ? 'video' : 'image');
-      
       if (isVideo) {
         const video = document.createElement('video');
         video.preload = 'metadata';
-        video.onloadedmetadata = () => {
-          setVideoDuration(video.duration);
-          console.log("영상 길이(초):", video.duration);
-        };
+        video.onloadedmetadata = () => setVideoDuration(video.duration);
         video.src = URL.createObjectURL(file);
       }
-      
-      // 상태 초기화
       setAnalysisResult({ graphImg: null, freqImg: null, detectImg: null, realConfidence: null, comment: "" });
       setProgress(0);
     }
   };
 
-  // 분석 실행
-  const handleAnalyze = async () => {
-    if (!rawFile) {
-      alert("파일을 먼저 업로드해주세요! ✨");
+  // -------------------------------
+  // URL 이미지 추출 함수 (추론은 하지 않음)
+  // -------------------------------
+  const handleUrlExtract = async () => {
+    if (!inputUrl) {
+      alert("타겟 URL을 입력하십시오.");
       return;
     }
+    setIsExtracting(true);
+    setExtractedImages([]);
 
+    try {
+      const app = await client("euntaejang/deepfake");
+      const result = await app.predict("/extract_url", [inputUrl]);
+      
+      // result.data[0] 에 이미지 URL 배열이 들어있음
+      if (result.data && result.data[0]) {
+        setExtractedImages(result.data[0]);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("URL 자산 추출 실패: 서버 연결을 확인하십시오.");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!rawFile) {
+      alert("분석할 증거물을 확보하십시오.");
+      return;
+    }
     setIsAnalyzing(true);
     setProgress(0);
 
-    // --- 로딩바 애니메이션 로직 ---
-    // 비디오는 (길이 * 2)초, 이미지는 5초를 목표로 설정
     const estimatedTime = fileType === 'video' ? Math.max(videoDuration * 2, 8) : 5; 
-    const intervalTime = 100; // 0.1초마다 업데이트
+    const intervalTime = 100;
     const totalSteps = (estimatedTime * 1000) / intervalTime;
     const stepIncrement = 100 / totalSteps;
 
     const timer = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 95) {
-          clearInterval(timer); // 서버 응답 대기를 위해 95%에서 멈춤
+          clearInterval(timer);
           return 95;
         }
         return prev + stepIncrement;
@@ -75,7 +103,6 @@ function App() {
       const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
       const apiResult = await app.predict(endpoint, [rawFile]);
 
-      // 성공 시 즉시 100% 채우기
       clearInterval(timer);
       setProgress(100);
 
@@ -84,8 +111,8 @@ function App() {
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
           comment: apiResult.data[0] > 50 
-            ? "영상 전체적으로 일관된 데이터가 관찰됩니다. 안심하셔도 좋습니다!" 
-            : "특정 구간에서 합성 징후가 포착되었습니다. 주의가 필요합니다."
+            ? "[판독완료] 데이터 무결성 검증됨. 조작 흔적 없음." 
+            : "[위험] 인위적 프레임 변조 및 합성 징후 포착."
         });
       } else {
         setAnalysisResult({
@@ -93,17 +120,14 @@ function App() {
           freqImg: apiResult.data[1]?.url,
           detectImg: apiResult.data[2]?.url,
           comment: apiResult.data[0] > 50 
-            ? "아주 자연스러운 사진이에요. 가짜일 확률이 매우 낮습니다." 
-            : "픽셀 구조에서 인위적인 수정 흔적이 발견되었습니다."
+            ? "[판독완료] 픽셀 무결성 통과. 정상 이미지입니다." 
+            : "[경고] 딥러닝 기반 생성 노이즈 패턴이 감지됨."
         });
       }
-
     } catch (error) {
       clearInterval(timer);
       setProgress(0);
-      console.error(error);
-      const msg = error.message || "";
-      alert(msg.includes("얼굴") ? "얼굴을 찾을 수 없습니다. 정면 사진을 올려주세요!" : "분석 중 오류가 발생했습니다.");
+      alert("분석 오류 발생");
     } finally {
       setIsAnalyzing(false);
     }
@@ -112,88 +136,181 @@ function App() {
   const displayScore = analysisResult.realConfidence !== null ? Math.floor(analysisResult.realConfidence) : null;
 
   return (
-    <div className="min-h-screen bg-[#FFF0F5] p-4 md:p-8 font-sans text-[#5F4B8B]">
-      <header className="max-w-6xl mx-auto mb-10 flex justify-between items-center bg-white/60 backdrop-blur-md p-5 rounded-3xl shadow-sm border border-pink-100">
-        <div className="flex items-center gap-2">
-          <span className="text-3xl">💖</span>
-          <h1 className="text-2xl font-black bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">LoveGuard AI</h1>
+    <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
+      {/* HEADER */}
+      <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6 shadow-[0_0_20px_rgba(0,242,255,0.4)]">
+        <div className="flex items-center gap-5">
+          <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
+            <span className="text-black text-xl font-black">NPA</span>
+          </div>
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter">DIGITAL FORENSIC ANALYSIS TERMINAL</h1>
+            <p className="text-sm text-[#00f2ff]/70 tracking-[0.3em]">UNIT CODE: 0429-DEEPFAKE-DETECTOR</p>
+          </div>
         </div>
-        <button onClick={() => window.location.reload()} className="px-5 py-2 bg-pink-500 text-white rounded-full font-bold shadow-lg hover:bg-pink-600 transition-all">새로고침</button>
+        <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all text-lg font-black italic">
+          REBOOT SYSTEM
+        </button>
       </header>
 
-      <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
         
-        {/* 왼쪽: 미디어 업로드 */}
-        <section className="lg:col-span-4 space-y-6">
-          <div className="relative group">
-            <label htmlFor="file-upload" className="relative aspect-square bg-white rounded-[2rem] flex flex-col items-center justify-center border-4 border-white shadow-xl overflow-hidden cursor-pointer">
-              {selectedFile ? (
-                fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-cover" controls /> : <img src={selectedFile} alt="Upload" className="w-full h-full object-cover" />
-              ) : (
-                <div className="text-center p-4">
-                  <div className="text-5xl mb-3">🎬</div>
-                  <p className="text-pink-400 font-bold">사진/영상 업로드</p>
-                </div>
-              )}
-              <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} />
-            </label>
+        {/* LEFT: EVIDENCE SECTION */}
+        <section className="lg:col-span-5 space-y-6">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 relative shadow-inner">
+            <div className="flex justify-between mb-6">
+              <button 
+                onClick={() => setIsUrlMode(false)}
+                className={`flex-1 py-3 text-lg font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10 text-white' : 'border-transparent text-gray-500'}`}
+              >
+                LOCAL FILE
+              </button>
+              <button 
+                onClick={() => setIsUrlMode(true)}
+                className={`flex-1 py-3 text-lg font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10 text-white' : 'border-transparent text-gray-500'}`}
+              >
+                NETWORK URL
+              </button>
+            </div>
+
+            {!isUrlMode ? (
+              <label htmlFor="file-upload" className="relative aspect-video bg-black/70 border-2 border-dashed border-[#00f2ff]/50 flex flex-col items-center justify-center cursor-pointer group hover:border-[#00f2ff] transition-all">
+                {selectedFile ? (
+                  fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} alt="Evidence" className="w-full h-full object-contain" />
+                ) : (
+                  <div className="text-center">
+                    <p className="text-2xl font-bold mb-2 text-[#00f2ff]/50">SECURE UPLOAD AREA</p>
+                    <p className="text-sm text-gray-500 tracking-widest">DRAG AND DROP EVIDENCE</p>
+                  </div>
+                )}
+                {isAnalyzing && <div className="scan-line"></div>}
+                <input id="file-upload" type="file" className="hidden" onChange={handleFileChange} />
+              </label>
+            ) : (
+              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center gap-5 overflow-y-auto">
+                <input 
+                  type="text" 
+                  placeholder="INPUT TARGET URL..."
+                  className="bg-black border-2 border-[#00f2ff]/50 p-4 text-xl outline-none focus:border-[#00f2ff] text-white"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                />
+                <button 
+                  onClick={handleUrlExtract}
+                  disabled={isExtracting}
+                  className="bg-[#00f2ff] text-black font-black py-4 text-xl hover:bg-white transition-all shadow-[0_0_15px_#00f2ff] disabled:bg-gray-600"
+                >
+                  {isExtracting ? "EXTRACTING ASSETS..." : "RUN REMOTE ASSET EXTRACTION"}
+                </button>
+
+                {/* 추출된 이미지 목록 렌더링 */}
+                {extractedImages.length > 0 && (
+                  <div className="mt-4 grid grid-cols-4 gap-2 border-t border-[#00f2ff]/30 pt-4">
+                    {extractedImages.map((url, idx) => (
+                      <div key={idx} className="aspect-square border border-[#00f2ff]/30 overflow-hidden hover:border-[#00f2ff] transition-all">
+                        <img src={url} alt="extracted" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <button onClick={handleAnalyze} disabled={isAnalyzing} className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-xl transition-all ${isAnalyzing ? 'bg-gray-400' : 'bg-gradient-to-r from-pink-400 to-rose-400 hover:scale-105'}`}>
-            {isAnalyzing ? "분석 중..." : "🔮 판독 시작"}
+          <button 
+            onClick={handleAnalyze} 
+            disabled={isAnalyzing || (isUrlMode && !selectedFile)} 
+            className={`w-full py-6 font-black text-2xl tracking-[0.4em] transition-all border-4 ${isAnalyzing ? 'bg-gray-800 border-gray-700 text-gray-500' : 'bg-transparent border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black shadow-[0_0_20px_rgba(0,242,255,0.2)]'}`}
+          >
+            {isAnalyzing ? "SCANNING DATA..." : "EXECUTE FORENSIC SCAN"}
           </button>
 
-          <div className="p-6 bg-white/80 rounded-3xl border border-pink-100 shadow-sm">
-            <h3 className="font-bold text-pink-600 mb-2 flex items-center gap-2"><span>📝</span> AI 코멘트</h3>
-            <p className="text-gray-600 text-sm italic">{analysisResult.comment || "분석 버튼을 누르면 AI가 결과를 알려줍니다."}</p>
+          <div className="p-6 bg-black/80 border-l-8 border-[#00f2ff] shadow-lg">
+            <h3 className="text-[#00f2ff] text-xl font-bold mb-3 underline tracking-tighter">CHIEF INVESTIGATOR'S LOG</h3>
+            <p className="text-gray-200 text-lg leading-relaxed font-mono italic">{analysisResult.comment || "> SYSTEM IDLE: AWAITING INPUT..."}</p>
+          </div>
+
+          {/* NEWS SECTION */}
+          <div className="pt-4 border-t border-[#00f2ff]/20">
+            <p className="text-sm font-bold mb-4 tracking-widest text-[#00f2ff]/60 uppercase">Reference Deepfake Cases</p>
+            <div className="grid grid-cols-3 gap-4">
+              {newsData.map((news) => (
+                <div key={news.id} className="aspect-[4/3] bg-gray-900 border-2 border-white/10 hover:border-[#00f2ff] cursor-pointer relative group overflow-hidden transition-all">
+                  <img src={news.src} alt={news.label} className="w-full h-full object-cover opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                  <div className="absolute bottom-2 left-2 text-[10px] bg-[#00f2ff] text-black px-2 font-bold">{news.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
-        {/* 오른쪽: 결과 리포트 */}
-        <section className="lg:col-span-8 space-y-6">
-          <div className="p-8 bg-white rounded-[2.5rem] shadow-xl border-t-8 border-pink-400">
-            <div className="flex justify-between items-center mb-6">
+        {/* RIGHT: REPORT SECTION */}
+        <section className="lg:col-span-7 space-y-6">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 relative h-full flex flex-col shadow-2xl">
+            <div className="flex justify-between items-start mb-12">
               <div>
-                <p className="text-pink-400 font-bold text-xs uppercase tracking-widest">Confidence Score</p>
-                <div className="flex items-baseline gap-1">
-                  <p className="text-7xl font-black text-pink-500">{displayScore ?? "--"}</p>
-                  <p className="text-2xl font-bold text-pink-400">%</p>
+                <p className="text-lg text-[#00f2ff]/60 uppercase font-bold tracking-widest mb-2">Integrity Confidence</p>
+                <div className="flex items-baseline gap-4">
+                  <span className="text-9xl font-black italic tracking-tighter text-[#00f2ff] drop-shadow-[0_0_15px_rgba(0,242,255,0.5)]">
+                    {displayScore ?? "00"}
+                  </span>
+                  <span className="text-4xl font-bold">%</span>
                 </div>
               </div>
-              {displayScore !== null && (
-                <div className={`px-6 py-3 rounded-2xl text-lg font-black text-white ${displayScore > 50 ? 'bg-green-400' : 'bg-rose-500 animate-pulse'}`}>
-                  {displayScore > 50 ? '✅ 진본 가능성 높음' : '🚨 위조 가능성 높음'}
-                </div>
-              )}
+              <div className="text-right">
+                <p className="text-sm text-[#00f2ff]/60 mb-4 uppercase font-bold tracking-widest">Final Verdict</p>
+                {displayScore !== null && (
+                  <div className={`px-8 py-4 text-2xl font-black border-4 shadow-[0_0_20px_rgba(0,0,0,0.5)] ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
+                    {displayScore > 50 ? 'VERIFIED: AUTHENTIC' : 'ALERT: FORGERY DETECTED'}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* 진행도 로딩바 */}
-            <div className="mt-8 p-6 bg-gray-50 rounded-3xl border border-pink-50">
-               <div className="flex justify-between mb-3">
-                  <p className="font-bold text-gray-700">{isAnalyzing ? "🧚 요정이 데이터를 읽는 중..." : "📊 분석 진행도"}</p>
-                  <p className="text-pink-500 font-black">{Math.floor(progress)}%</p>
+            {/* PROGRESS BAR */}
+            <div className="mb-12">
+               <div className="flex justify-between text-lg font-bold mb-3">
+                  <span className="tracking-widest">SCANNING FREQUENCY & PIXEL INTEGRITY...</span>
+                  <span>{Math.floor(progress)}%</span>
                </div>
-               <div className="h-5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                  <div 
-                    className="h-full bg-gradient-to-r from-pink-300 to-rose-500 transition-all duration-300 ease-out" 
-                    style={{ width: `${progress}%` }}
-                  ></div>
+               <div className="h-4 bg-black border-2 border-[#00f2ff]/30 p-[2px]">
+                  <div className="h-full bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
                </div>
-               <p className="text-[10px] text-gray-400 mt-3 italic">
-                 {fileType === 'video' ? "* 비디오 분석은 영상 길이에 따라 최대 몇 분이 소요될 수 있습니다." : "* 이미지 분석은 보통 5초 이내에 완료됩니다."}
-               </p>
             </div>
 
-            {/* 시각화 결과 */}
-            <div className="mt-8 grid grid-cols-1 gap-4">
-              {fileType === 'video' ? (
-                analysisResult.graphImg && <img src={analysisResult.graphImg} className="w-full rounded-2xl shadow-lg border border-pink-100" alt="Result" />
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  {analysisResult.freqImg && <img src={analysisResult.freqImg} className="rounded-xl border shadow-sm" alt="Freq" />}
-                  {analysisResult.detectImg && <img src={analysisResult.detectImg} className="rounded-xl border shadow-sm" alt="Detect" />}
+            {/* VISUALIZATION */}
+            <div className="grid grid-cols-1 gap-6 flex-grow">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
+                  <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3">FREQUENCY SPECTRUM</p>
+                  <div className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
+                    {fileType === 'video' ? (
+                       analysisResult.graphImg ? <img src={analysisResult.graphImg} className="w-full h-full object-cover" alt="Graph" /> : <span className="text-sm text-gray-700">WAITING...</span>
+                    ) : (
+                       analysisResult.freqImg ? <img src={analysisResult.freqImg} className="w-full h-full object-cover" alt="Freq" /> : <span className="text-sm text-gray-700">WAITING...</span>
+                    )}
+                  </div>
                 </div>
-              )}
+                <div className="border-2 border-[#00f2ff]/20 p-4 bg-black/50">
+                  <p className="text-sm mb-3 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3">TRACE ANALYSIS</p>
+                  <div className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden border border-white/5">
+                    {fileType === 'image' && analysisResult.detectImg ? (
+                      <img src={analysisResult.detectImg} className="w-full h-full object-cover" alt="Detect" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center opacity-10">
+                        <div className="w-1/2 h-[2px] bg-[#00f2ff] mb-4 animate-bounce"></div>
+                        <span className="text-xs">SCANNING...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-8 flex justify-between items-center opacity-40 text-xs font-mono border-t border-[#00f2ff]/20 pt-4">
+              <span>LOCAL_SECURE_SERVER_PORT: 8080</span>
+              <span>LOG_ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
             </div>
           </div>
         </section>
