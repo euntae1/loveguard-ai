@@ -158,7 +158,7 @@ function App() {
           <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
             <span className="text-black text-xl font-black">dbdb</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">사이버 위변조 수사본부</h1>
+          <h1 className="text-4xl font-black tracking-tighter uppercase">디비디비딥페이크</h1>
         </div>
         <button onClick={() => {
           clearInterval(progressTimer.current);
