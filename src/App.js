@@ -9,7 +9,8 @@ import './index.css';
  */
 const DonutChart = ({ score, label, color }) => {
   const [displayScore, setDisplayScore] = useState(0);
-  const radius = 35;
+// 1. 반지름(radius) 키우기 (기존 35 -> 50)
+  const radius = 50; 
   const circumference = 2 * Math.PI * radius;
   
   // 점수 애니메이션 효과
@@ -23,30 +24,32 @@ const DonutChart = ({ score, label, color }) => {
   const offset = circumference - (displayScore / 100) * circumference;
 
   return (
-    <div className="flex flex-col items-center p-6 bg-black/40 border border-[#00f2ff]/20 shadow-[0_0_15px_rgba(0,242,255,0.05)]">
-      <span className="text-[11px] text-[#00f2ff]/70 mb-4 font-mono uppercase tracking-[0.2em]">{label}</span>
+    <div className="flex flex-col items-center p-6 bg-black/40 ...">
+      <span className="text-[11px] ...">{label}</span>
       <div className="relative flex items-center justify-center">
-        <svg className="w-32 h-32 transform -rotate-90">
-          {/* 배경 원 가이드 */}
+        {/* 2. SVG 캔버스 크기 키우기 (기존 w-32 h-32 -> w-48 h-48) */}
+        <svg className="w-48 h-48 transform -rotate-90">
+          {/* 3. 중심 좌표(cx, cy)와 선 두께(strokeWidth) 조정 */}
+          {/* cx, cy는 캔버스 크기(w-48 = 192px)의 절반인 96으로 설정 */}
           <circle 
-            cx="64" cy="64" r={radius} 
-            stroke="#1a1f26" strokeWidth="8" fill="transparent" 
+            cx="96" cy="96" r={radius} 
+            stroke="#1a1f26" strokeWidth="12" fill="transparent" 
           />
-          {/* 실제 데이터 게이지 */}
           <circle 
-            cx="64" cy="64" r={radius} 
-            stroke={color} strokeWidth="8" fill="transparent"
+            cx="96" cy="96" r={radius} 
+            stroke={color} strokeWidth="12" fill="transparent"
             strokeDasharray={circumference}
             style={{ 
               strokeDashoffset: offset, 
-              transition: 'stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1)',
-              filter: `drop-shadow(0 0 5px ${color})`
+              transition: 'stroke-dashoffset 2s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              filter: `drop-shadow(0 0 10px ${color})`
             }}
             strokeLinecap="round"
           />
         </svg>
+        {/* 4. 중앙 텍스트 크기 키우기 (기존 text-2xl -> text-4xl) */}
         <div className="absolute flex flex-col items-center">
-          <span className="text-2xl font-black text-white">{Math.floor(displayScore)}%</span>
+          <span className="text-4xl font-black text-white">{Math.floor(displayScore)}%</span>
         </div>
       </div>
     </div>
