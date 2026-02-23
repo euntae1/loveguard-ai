@@ -58,10 +58,13 @@ function App() {
   const progressTimer = useRef(null);
 
   const [isUrlMode, setIsUrlMode] = useState(false);
-  const [inputUrl, setInputUrl] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
 
-  // urlFaces: 유튜브 쇼츠 분석 시 실시간으로 추가되는 얼굴 이미지 리스트
+  // 화면 캡처 관련 State
+  const [isCaptureOverlay, setIsCaptureOverlay] = useState(false);
+  const videoRef = useRef(null);
+  const [selection, setSelection] = useState({ startX: 0, startY: 0, endX: 0, endY: 0, active: false });
+
   const [analysisResult, setAnalysisResult] = useState({
     srmScore: null,
     pixelScore: null,
@@ -107,52 +110,86 @@ function App() {
     }
   };
 
-  // [수정된 부분] 유튜브 쇼츠 실시간 URL 분석 핸들러
-  const handleUrlAnalyze = async () => {
-    if (!inputUrl) {
-      alert("타겟 URL을 입력하십시오.");
-      return;
-    }
-    setIsExtracting(true);
-    setAnalysisResult({ srmScore: null, pixelScore: null, graphImg: null, urlFaces: [], realConfidence: null, comment: "" });
-    startProgress(30); // 쇼츠 분석은 다소 시간이 걸리므로 넉넉히 설정
-
+  // --- [새로운 핵심 기능: 화면 캡처 로직] ---
+  const startScreenCapture = async () => {
     try {
-      const app = await client("euntaejang/deepfake");
-      
-      // .submit을 사용하여 실시간으로 데이터를 수신 (Gradio yield 연동)
-      const job = app.submit("/extract_url", [inputUrl]);
-
-      job.on("data", (result) => {
-        if (result.data) {
-          setAnalysisResult(prev => ({
-            ...prev,
-            realConfidence: result.data[0], // "85.2%" 또는 "12 Faces" 같은 문자열
-            urlFaces: result.data[1] || [],  // [{face_img: "base64...", score: 85}, ...]
-            comment: `[실시간 추적 중] ${result.data[2]}`
-          }));
-          
-          // 분석이 완료되었다는 메시지가 오면 프로그레스바 완료
-          if (result.data[2] === "분석 완료") {
-            clearInterval(progressTimer.current);
-            setProgress(100);
-            setIsExtracting(false);
-          }
-        }
-      });
-
-      job.on("error", (err) => {
-        throw err;
-      });
-
-    } catch (error) {
-      clearInterval(progressTimer.current);
-      setProgress(0);
-      alert("URL 분석 실패 (유튜브 연결 확인)");
-      setIsExtracting(false);
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } });
+      videoRef.current.srcObject = stream;
+      setIsCaptureOverlay(true);
+      setAnalysisResult({ srmScore: null, pixelScore: null, graphImg: null, urlFaces: [], realConfidence: null, comment: "" });
+    } catch (err) {
+      console.error(err);
+      alert("화면 공유 권한이 거부되었습니다.");
     }
   };
 
+  const handleMouseDown = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    setSelection({ ...selection, startX: e.clientX - rect.left, startY: e.clientY - rect.top, active: true });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!selection.active) return;
+    const rect = e.target.getBoundingClientRect();
+    setSelection({ ...selection, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+  };
+
+  const handleMouseUp = async () => {
+    if (!selection.active) return;
+    setSelection({ ...selection, active: false });
+    
+    setIsExtracting(true);
+    startProgress(3);
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const width = Math.abs(selection.endX - selection.startX);
+    const height = Math.abs(selection.endY - selection.startY);
+    const left = Math.min(selection.startX, selection.endX);
+    const top = Math.min(selection.startY, selection.endY);
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // 비디오 해상도와 표시 크기 비율 계산
+    const scaleX = video.videoWidth / video.offsetWidth;
+    const scaleY = video.videoHeight / video.offsetHeight;
+
+    ctx.drawImage(video, left * scaleX, top * scaleY, width * scaleX, height * scaleY, 0, 0, width, height);
+    
+    canvas.toBlob(async (blob) => {
+      const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
+      
+      // 스트림 중지
+      video.srcObject.getTracks().forEach(track => track.stop());
+      setIsCaptureOverlay(false);
+
+      try {
+        const app = await client("euntaejang/deepfake");
+        // 서버의 extract_url 엔드포인트(process_capture 함수) 호출
+        const result = await app.predict("/extract_url", [file]);
+
+        setAnalysisResult(prev => ({
+          ...prev,
+          realConfidence: result.data[0], 
+          urlFaces: result.data[1] || [],
+          comment: `[캡처 분석 완료] ${result.data[2]}`
+        }));
+        
+        clearInterval(progressTimer.current);
+        setProgress(100);
+      } catch (error) {
+        alert("분석 실패: 서버 연결을 확인하세요.");
+        setProgress(0);
+      } finally {
+        setIsExtracting(false);
+      }
+    }, 'image/jpeg');
+  };
+
+  // 기존 파일 분석 핸들러 (유지)
   const handleAnalyze = async () => {
     if (!rawFile) {
       alert("분석할 증거물을 확보하십시오.");
@@ -205,11 +242,40 @@ function App() {
   };
 
   const displayScore = analysisResult.realConfidence !== null
-    ? (isUrlMode ? analysisResult.realConfidence : Math.floor(analysisResult.realConfidence))
+    ? (typeof analysisResult.realConfidence === 'string' 
+        ? parseFloat(analysisResult.realConfidence) 
+        : Math.floor(analysisResult.realConfidence))
     : null;
 
   return (
     <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
+      
+      {/* 캡처 모드 오버레이 */}
+      {isCaptureOverlay && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4">
+          <div className="mb-4 text-white font-black bg-red-600 px-6 py-2 animate-pulse rounded-full shadow-[0_0_20px_red]">
+            [CAPTURE MODE] 분석할 영역을 드래그하세요
+          </div>
+          <div className="relative border-2 border-[#00f2ff] overflow-hidden cursor-crosshair max-w-full"
+               onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+            <video ref={videoRef} autoPlay className="max-w-[90vw] max-h-[80vh] block" />
+            {selection.active && (
+              <div className="absolute border-2 border-red-500 bg-red-500/20 shadow-[0_0_10px_red]"
+                   style={{
+                     left: Math.min(selection.startX, selection.endX),
+                     top: Math.min(selection.startY, selection.endY),
+                     width: Math.abs(selection.endX - selection.startX),
+                     height: Math.abs(selection.endY - selection.startY)
+                   }} />
+            )}
+          </div>
+          <button onClick={() => {
+            videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+            setIsCaptureOverlay(false);
+          }} className="mt-6 text-white/50 hover:text-white underline font-mono">분석 취소 (ESC)</button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6">
         <div className="flex items-center gap-5">
@@ -228,8 +294,8 @@ function App() {
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button onClick={() => { setIsUrlMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상</button>
-              <button onClick={() => { setIsUrlMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>URL링크</button>
+              <button onClick={() => { setIsUrlMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상 업로드</button>
+              <button onClick={() => { setIsUrlMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>화면 캡처 분석</button>
             </div>
 
             {!isUrlMode ? (
@@ -243,16 +309,13 @@ function App() {
                 <input type="file" className="hidden" onChange={handleFileChange} />
               </label>
             ) : (
-              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center gap-5">
-                <input 
-                  type="text" 
-                  placeholder="유튜브 쇼츠 URL을 입력하세요..."
-                  className="bg-black border-2 border-[#00f2ff]/50 p-4 outline-none text-[#00f2ff] font-mono placeholder:text-[#00f2ff]/30"
-                  value={inputUrl}
-                  onChange={(e) => setInputUrl(e.target.value)}
-                />
-                <button onClick={handleUrlAnalyze} disabled={isExtracting} className="bg-[#00f2ff] text-black font-black py-4 hover:bg-white transition-all disabled:bg-gray-600 shadow-[0_0_15px_rgba(0,242,255,0.4)]">
-                  {isExtracting ? "유튜브 쇼츠 데이터 분석 중..." : "쇼츠 정밀 분석 개시"}
+              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center items-center gap-5">
+                <div className="text-center mb-2">
+                   <p className="text-sm opacity-70 mb-1">유튜브 쇼츠, 인스타그램 등 분석 대상을 띄우고</p>
+                   <p className="font-bold text-[#00f2ff]">아래 버튼을 클릭하여 영역을 드래그하세요.</p>
+                </div>
+                <button onClick={startScreenCapture} disabled={isExtracting} className="w-full bg-[#00f2ff] text-black font-black py-5 hover:bg-white transition-all disabled:bg-gray-600 shadow-[0_0_20px_rgba(0,242,255,0.6)] animate-pulse">
+                  {isExtracting ? "영역 데이터 처리 중..." : "실시간 화면 캡처 분석 시작"}
                 </button>
               </div>
             )}
@@ -286,15 +349,15 @@ function App() {
                 <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-[0.3em] text-xs">최종 신뢰 점수</p>
                 <div className="flex items-baseline gap-4">
                   <span className="text-8xl font-black italic text-[#00f2ff] drop-shadow-[0_0_20px_rgba(0,242,255,0.4)]">
-                    {displayScore ?? "00"}
+                    {displayScore !== null ? Math.floor(displayScore) : "00"}
                   </span>
-                  {!isUrlMode && <span className="text-4xl font-bold text-[#00f2ff]/80">%</span>}
+                  <span className="text-4xl font-bold text-[#00f2ff]/80">%</span>
                 </div>
               </div>
               
               <div className="text-right">
                 <p className="text-xs text-[#00f2ff]/60 mb-4 font-bold uppercase tracking-widest">분석 결과 상태</p>
-                {!isUrlMode && displayScore !== null && (
+                {displayScore !== null && (
                   <div className={`px-10 py-5 text-3xl font-black border-4 shadow-lg transition-all ${
                      displayScore > 50
                     ? 'border-green-500 text-green-500 bg-green-500/10'
@@ -303,12 +366,6 @@ function App() {
                     {displayScore > 50 ? 'AUTHENTIC' : 'DEEPFAKE'}
                   </div>
                 )}
-
-                {isUrlMode && displayScore && (
-                  <div className="px-10 py-5 text-2xl font-black border-4 border-[#00f2ff] text-[#00f2ff] bg-[#00f2ff]/10">
-                    REAL-TIME SCANNING
-                  </div>
-                )}                
               </div>
             </div>
 
@@ -334,24 +391,25 @@ function App() {
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-full">
-                {/* 1. 이미지 모드 */}
-                {!isUrlMode && fileType === 'image' && analysisResult.srmScore !== null && (
+                {/* 1. 이미지/캡처 모드 결과 */}
+                {(!isUrlMode || analysisResult.urlFaces.length > 0) && analysisResult.srmScore !== null && (
                   <>
                     <DonutChart score={analysisResult.srmScore} label="주파수(SRM) 대조 분석" color="#7C3AED" />
                     <DonutChart score={analysisResult.pixelScore} label="픽셀(Pixel) 변조 분석" color="#2563EB" />
                   </>
                 )}
 
-                {/* 2. 비디오 모드 */}
+                {/* 2. 비디오 모드 결과 */}
                 {!isUrlMode && fileType === 'video' && analysisResult.graphImg && (
                   <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
                     <img src={analysisResult.graphImg} className="w-full h-full object-contain" />
                   </div>
                 )}
 
-                {/* 3. [수정됨] URL 모드: 실시간 얼굴 그리드 결과 */}
+                {/* 3. 캡처 모드에서 검출된 얼굴 리스트 표시 */}
                 {isUrlMode && analysisResult.urlFaces.length > 0 && (
-                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/20 p-4 overflow-y-auto max-h-[400px]">
+                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/20 p-4">
+                    <p className="text-[10px] mb-3 opacity-50 uppercase tracking-tighter">추출된 안면 데이터 분석:</p>
                     <div className="grid grid-cols-4 gap-4">
                       {analysisResult.urlFaces.map((item, idx) => (
                         <div key={idx} className="relative border border-[#00f2ff]/40 bg-black">
