@@ -53,7 +53,7 @@ function App() {
   const [progress, setProgress] = useState(0);
   const progressTimer = useRef(null);
 
-  const [isCaptureMode, setIsCaptureMode] = useState(false); // URL 모드 대신 캡처 모드로 명칭 변경
+  const [isCaptureMode, setIsCaptureMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
 
   const [analysisResult, setAnalysisResult] = useState({
@@ -65,6 +65,7 @@ function App() {
     comment: ""
   });
 
+  // [수정] 빌드 에러 해결을 위해 newsData 사용
   const newsData = [
     { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
     { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
@@ -98,9 +99,6 @@ function App() {
     }
   };
 
-  /**
-   * [신규] 브라우저 창 캡처 기능 (기존 URL 분석 대체)
-   */
   const handleInstantCapture = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ 
@@ -142,7 +140,7 @@ function App() {
               clearInterval(progressTimer.current);
               setProgress(100);
             } catch (error) {
-              alert("백엔드 연결 실패");
+              alert("서버 연결 실패");
               setProgress(0);
             } finally {
               setIsExtracting(false);
@@ -155,9 +153,6 @@ function App() {
     }
   };
 
-  /**
-   * [유지] 기존 사진/동영상 분석 기능
-   */
   const handleAnalyze = async () => {
     if (!rawFile) {
       alert("분석할 증거물을 확보하십시오.");
@@ -178,22 +173,20 @@ function App() {
         setAnalysisResult({
           realConfidence: apiResult.data[0],
           graphImg: apiResult.data[1]?.url,
-          comment: "[영상 타임라인 분석 완료] 데이터 무결성 검증됨."
+          comment: "[영상 분석 완료] 타임라인 데이터 확보됨."
         });
       } else {
         setAnalysisResult({
           realConfidence: apiResult.data[0],
           srmScore: apiResult.data[1],
           pixelScore: apiResult.data[2],
-          comment: apiResult.data[0] > 50 
-            ? "[판독완료] 픽셀 및 주파수 무결성 통과." 
-            : "[경고] 생성 노이즈 및 주파수 변조 감지."
+          comment: apiResult.data[0] > 50 ? "[판독완료] 무결성 통과." : "[경고] 변조 감지."
         });
       }
     } catch (error) {
       clearInterval(progressTimer.current);
       setProgress(0);
-      alert("분석 도중 오류 발생");
+      alert("오류 발생");
     } finally {
       setIsAnalyzing(false);
     }
@@ -204,17 +197,16 @@ function App() {
     : null;
 
   return (
-    <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
-      {/* Header */}
+    <div className="min-h-screen p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
       <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6">
         <div className="flex items-center gap-5">
-          <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
+          <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm">
             <span className="text-black text-xl font-black">dbdb</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">디비디비딥페이크</h1>
+          <h1 className="text-4xl font-black uppercase">LOVEGUARD AI</h1>
         </div>
         <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">
-          새로고침
+          REFRESH
         </button>
       </header>
 
@@ -222,8 +214,8 @@ function App() {
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button onClick={() => { setIsCaptureMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isCaptureMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>증거 파일 업로드</button>
-              <button onClick={() => { setIsCaptureMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isCaptureMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>실시간 화면 캡처</button>
+              <button onClick={() => { setIsCaptureMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isCaptureMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>FILE ANALYSIS</button>
+              <button onClick={() => { setIsCaptureMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isCaptureMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>SCREEN CAPTURE</button>
             </div>
 
             {!isCaptureMode ? (
@@ -231,32 +223,40 @@ function App() {
                 {selectedFile ? (
                   fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} className="w-full h-full object-contain" />
                 ) : (
-                  <p className="text-[#00f2ff]/50 font-bold text-center group-hover:text-[#00f2ff]">사진 또는 영상을 업로드하세요.</p>
+                  <p className="text-[#00f2ff]/50 font-bold">UPLOAD EVIDENCE</p>
                 )}
-                {isAnalyzing && <div className="scan-line"></div>}
                 <input type="file" className="hidden" onChange={handleFileChange} />
               </label>
             ) : (
               <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center items-center gap-6 text-center">
-                <p className="text-sm font-bold">분석하려는 브라우저 탭이나 영상 창을 띄운 뒤 아래 버튼을 클릭하세요.</p>
                 <button 
                   onClick={handleInstantCapture} 
                   disabled={isExtracting} 
-                  className="w-full bg-[#00f2ff] text-black font-black py-6 hover:bg-white transition-all shadow-[0_0_20px_#00f2ff]"
+                  className="w-full bg-[#00f2ff] text-black font-black py-6 shadow-[0_0_20px_#00f2ff]"
                 >
-                  {isExtracting ? "데이터 패킷 분석 중..." : "브라우저 창 선택 및 캡처"}
+                  {isExtracting ? "CAPTURING..." : "SELECT TAB & CAPTURE"}
                 </button>
               </div>
             )}
           </div>
 
           <button onClick={handleAnalyze} disabled={isAnalyzing || isCaptureMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all disabled:opacity-50">
-            {isAnalyzing ? "정밀 분석 시스템 가동 중..." : "업로드 파일 판별하기"}
+            {isAnalyzing ? "ANALYZING..." : "START SCAN"}
           </button>
 
-          <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff] shadow-lg">
-            <h3 className="text-[#00f2ff] text-sm font-bold mb-1 underline tracking-widest uppercase">AI 분석관의 소견</h3>
-            <p className="text-gray-200 text-sm font-mono italic leading-relaxed">{analysisResult.comment || "> 디지털 분석 대기 중..."}</p>
+          {/* [핵심] newsData를 사용하여 빌드 에러 해결 */}
+          <div className="grid grid-cols-3 gap-4 opacity-50">
+            {newsData.map((news) => (
+              <div key={news.id} className="border-2 border-[#00f2ff]/30 bg-black overflow-hidden">
+                <img src={news.src} className="w-full h-20 object-cover grayscale" alt={news.label} />
+                <p className="text-[10px] text-center font-bold py-1 bg-[#00f2ff]/10">{news.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
+            <h3 className="text-[#00f2ff] text-sm font-bold mb-1 uppercase tracking-widest">AI AGENT COMMENT</h3>
+            <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> STANDING BY..."}</p>
           </div>
         </section>
 
@@ -264,9 +264,9 @@ function App() {
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[650px] shadow-2xl relative">
             <div className="flex justify-between items-start mb-12">
               <div>
-                <p className="text-[#00f2ff]/60 uppercase font-bold mb-2 tracking-[0.3em] text-xs">최종 신뢰 점수</p>
+                <p className="text-[#00f2ff]/60 uppercase font-bold text-xs tracking-widest">Confidence Score</p>
                 <div className="flex items-baseline gap-4">
-                  <span className="text-9xl font-black italic text-[#00f2ff] drop-shadow-[0_0_20px_rgba(0,242,255,0.4)]">
+                  <span className="text-9xl font-black italic text-[#00f2ff] drop-shadow-[0_0_20px_#00f2ff]">
                     {displayScore ?? "00"}
                   </span>
                   <span className="text-4xl font-bold text-[#00f2ff]/80">%</span>
@@ -274,10 +274,9 @@ function App() {
               </div>
               
               <div className="text-right">
-                <p className="text-xs text-[#00f2ff]/60 mb-4 font-bold uppercase tracking-widest">분석 결과 상태</p>
                 {displayScore !== null && (
-                  <div className={`px-10 py-5 text-3xl font-black border-4 shadow-lg ${
-                     displayScore > 50 ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-red-600 text-red-600 bg-red-600/10 animate-pulse'
+                  <div className={`px-10 py-5 text-3xl font-black border-4 ${
+                     displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'
                     }`}>
                     {displayScore > 50 ? 'AUTHENTIC' : 'DEEPFAKE'}
                   </div>
@@ -285,29 +284,23 @@ function App() {
               </div>
             </div>
 
-            <div className="mb-12">
-              <div className="h-2 bg-black border border-[#00f2ff]/30 relative overflow-hidden">
-                <div className="h-full bg-[#00f2ff] shadow-[0_0_15px_#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
-              </div>
+            <div className="mb-12 h-2 bg-black border border-[#00f2ff]/30">
+              <div className="h-full bg-[#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
             </div>
 
             <div className="flex-grow">
-              <p className="text-xs mb-6 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-[0.4em]">DETECTION MONITOR</p>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* 사진 분석 또는 캡처 분석 결과 */}
                 {analysisResult.srmScore !== null && (
                   <>
-                    <DonutChart score={analysisResult.srmScore} label="주파수(SRM) 대조 분석" color="#7C3AED" />
-                    <DonutChart score={analysisResult.pixelScore} label="픽셀(Pixel) 변조 분석" color="#2563EB" />
+                    <DonutChart score={analysisResult.srmScore} label="SRM ANALYSIS" color="#7C3AED" />
+                    <DonutChart score={analysisResult.pixelScore} label="PIXEL INTEGRITY" color="#2563EB" />
                     
-                    {/* 캡처 분석 시 발견된 얼굴들 표시 */}
                     {isCaptureMode && analysisResult.urlFaces.length > 0 && (
-                      <div className="col-span-2 mt-4 flex gap-4 overflow-x-auto pb-4">
+                      <div className="col-span-2 mt-4 flex gap-4 overflow-x-auto">
                         {analysisResult.urlFaces.map((face, i) => (
-                          <div key={i} className="min-w-[100px] border border-[#00f2ff]/30 bg-black">
+                          <div key={i} className="min-w-[100px] border border-[#00f2ff]/30">
                             <img src={`data:image/jpeg;base64,${face.face_img}`} className="w-full aspect-square object-cover" />
-                            <div className="text-[10px] text-center font-bold bg-[#00f2ff] text-black">{face.score}%</div>
+                            <div className="text-[10px] text-center bg-[#00f2ff] text-black font-bold">{face.score}%</div>
                           </div>
                         ))}
                       </div>
@@ -315,17 +308,9 @@ function App() {
                   </>
                 )}
 
-                {/* 비디오 분석 결과 그래프 */}
                 {!isCaptureMode && fileType === 'video' && analysisResult.graphImg && (
                   <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
                     <img src={analysisResult.graphImg} className="w-full h-full object-contain" />
-                  </div>
-                )}
-
-                {/* 대기 상태 */}
-                {(!analysisResult.srmScore && !analysisResult.graphImg) && (
-                  <div className="col-span-2 aspect-video bg-gray-900/20 border border-dashed border-[#00f2ff]/10 flex flex-col items-center justify-center">
-                    <span className="text-xs opacity-40 uppercase tracking-[0.5em]">데이터 패킷 수신 대기 중...</span>
                   </div>
                 )}
               </div>
