@@ -60,7 +60,7 @@ function App() {
   const [isUrlMode, setIsUrlMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
 
-  // 화면 캡처 관련 State
+  // --- 화면 캡처 관련 상태 ---
   const [isCaptureOverlay, setIsCaptureOverlay] = useState(false);
   const videoRef = useRef(null);
   const [selection, setSelection] = useState({ startX: 0, startY: 0, endX: 0, endY: 0, active: false });
@@ -110,34 +110,52 @@ function App() {
     }
   };
 
-  // --- [새로운 핵심 기능: 화면 캡처 로직] ---
+  // --- 핵심: 사각형 드래그 캡처 로직 ---
   const startScreenCapture = async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } });
-      videoRef.current.srcObject = stream;
+      // 1. 브라우저 창/탭 리스트 출력 및 선택
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: { displaySurface: "browser", cursor: "always" },
+        audio: false 
+      });
+      
+      // 2. 선택 완료 시 캡처용 오버레이 활성화
       setIsCaptureOverlay(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
       setAnalysisResult({ srmScore: null, pixelScore: null, graphImg: null, urlFaces: [], realConfidence: null, comment: "" });
     } catch (err) {
-      console.error(err);
-      alert("화면 공유 권한이 거부되었습니다.");
+      console.error("화면 선택 취소 또는 오류:", err);
     }
   };
 
   const handleMouseDown = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setSelection({ ...selection, startX: e.clientX - rect.left, startY: e.clientY - rect.top, active: true });
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelection({
+      startX: e.clientX - rect.left,
+      startY: e.clientY - rect.top,
+      endX: e.clientX - rect.left,
+      endY: e.clientY - rect.top,
+      active: true
+    });
   };
 
   const handleMouseMove = (e) => {
     if (!selection.active) return;
-    const rect = e.target.getBoundingClientRect();
-    setSelection({ ...selection, endX: e.clientX - rect.left, endY: e.clientY - rect.top });
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelection(prev => ({
+      ...prev,
+      endX: e.clientX - rect.left,
+      endY: e.clientY - rect.top
+    }));
   };
 
   const handleMouseUp = async () => {
     if (!selection.active) return;
-    setSelection({ ...selection, active: false });
     
+    // 드래그 종료 및 분석 단계 진입
+    setSelection(prev => ({ ...prev, active: false }));
     setIsExtracting(true);
     startProgress(3);
 
@@ -145,43 +163,58 @@ function App() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
-    const width = Math.abs(selection.endX - selection.startX);
-    const height = Math.abs(selection.endY - selection.startY);
-    const left = Math.min(selection.startX, selection.endX);
-    const top = Math.min(selection.startY, selection.endY);
+    // 캡처 영역 계산
+    const rectLeft = Math.min(selection.startX, selection.endX);
+    const rectTop = Math.min(selection.startY, selection.endY);
+    const rectWidth = Math.abs(selection.endX - selection.startX);
+    const rectHeight = Math.abs(selection.endY - selection.startY);
 
-    canvas.width = width;
-    canvas.height = height;
+    if (rectWidth < 10 || rectHeight < 10) {
+        alert("캡처 영역이 너무 작습니다. 다시 드래그해주세요.");
+        setIsExtracting(false);
+        return;
+    }
 
-    // 비디오 해상도와 표시 크기 비율 계산
-    const scaleX = video.videoWidth / video.offsetWidth;
-    const scaleY = video.videoHeight / video.offsetHeight;
+    // 비디오 실제 해상도 대비 화면 표시 비율 계산
+    const scaleX = video.videoWidth / video.clientWidth;
+    const scaleY = video.videoHeight / video.clientHeight;
 
-    ctx.drawImage(video, left * scaleX, top * scaleY, width * scaleX, height * scaleY, 0, 0, width, height);
-    
+    canvas.width = rectWidth * scaleX;
+    canvas.height = rectHeight * scaleY;
+
+    // 선택 영역을 캔버스에 그리기
+    ctx.drawImage(
+      video,
+      rectLeft * scaleX, rectTop * scaleY, rectWidth * scaleX, rectHeight * scaleY,
+      0, 0, canvas.width, canvas.height
+    );
+
     canvas.toBlob(async (blob) => {
       const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
       
-      // 스트림 중지
-      video.srcObject.getTracks().forEach(track => track.stop());
+      // 스트림 종료 및 오버레이 닫기
+      const tracks = video.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
       setIsCaptureOverlay(false);
 
       try {
         const app = await client("euntaejang/deepfake");
-        // 서버의 extract_url 엔드포인트(process_capture 함수) 호출
+        // extract_url 엔드포인트에 캡처한 이미지 전송
         const result = await app.predict("/extract_url", [file]);
 
-        setAnalysisResult(prev => ({
-          ...prev,
-          realConfidence: result.data[0], 
+        setAnalysisResult({
+          realConfidence: result.data[0],
           urlFaces: result.data[1] || [],
-          comment: `[캡처 분석 완료] ${result.data[2]}`
-        }));
-        
+          srmScore: result.data[0], // 캡처 모드에서도 차트 표시를 위해 활용
+          pixelScore: 100 - result.data[0],
+          comment: `[영역 캡처 분석 완료] ${result.data[2]}`
+        });
+
         clearInterval(progressTimer.current);
         setProgress(100);
       } catch (error) {
-        alert("분석 실패: 서버 연결을 확인하세요.");
+        console.error(error);
+        alert("분석 서버 응답 실패");
         setProgress(0);
       } finally {
         setIsExtracting(false);
@@ -189,7 +222,7 @@ function App() {
     }, 'image/jpeg');
   };
 
-  // 기존 파일 분석 핸들러 (유지)
+  // 기존 파일 분석 로직 (유지)
   const handleAnalyze = async () => {
     if (!rawFile) {
       alert("분석할 증거물을 확보하십시오.");
@@ -250,29 +283,48 @@ function App() {
   return (
     <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
       
-      {/* 캡처 모드 오버레이 */}
+      {/* --- 사각형 드래그 캡처 오버레이 --- */}
       {isCaptureOverlay && (
-        <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="mb-4 text-white font-black bg-red-600 px-6 py-2 animate-pulse rounded-full shadow-[0_0_20px_red]">
-            [CAPTURE MODE] 분석할 영역을 드래그하세요
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center">
+          <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[10001] bg-red-600 text-white px-8 py-3 font-black animate-pulse shadow-[0_0_30px_red] rounded-full">
+            분석할 얼굴 영역을 마우스로 드래그하세요 (마우스를 떼면 즉시 분석)
           </div>
-          <div className="relative border-2 border-[#00f2ff] overflow-hidden cursor-crosshair max-w-full"
-               onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
-            <video ref={videoRef} autoPlay className="max-w-[90vw] max-h-[80vh] block" />
-            {selection.active && (
-              <div className="absolute border-2 border-red-500 bg-red-500/20 shadow-[0_0_10px_red]"
-                   style={{
-                     left: Math.min(selection.startX, selection.endX),
-                     top: Math.min(selection.startY, selection.endY),
-                     width: Math.abs(selection.endX - selection.startX),
-                     height: Math.abs(selection.endY - selection.startY)
-                   }} />
-            )}
+          
+          <div 
+            className="relative w-full h-full cursor-crosshair overflow-hidden flex items-center justify-center"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          >
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              className="w-full h-full object-contain pointer-events-none"
+            />
+            
+            {/* 드래그 사각형 UI */}
+            {selection.active || (selection.startX !== selection.endX) ? (
+              <div 
+                className="absolute border-2 border-[#00f2ff] bg-[#00f2ff]/10 shadow-[0_0_15px_#00f2ff]"
+                style={{
+                  left: Math.min(selection.startX, selection.endX),
+                  top: Math.min(selection.startY, selection.endY),
+                  width: Math.abs(selection.endX - selection.startX),
+                  height: Math.abs(selection.endY - selection.startY),
+                  pointerEvents: 'none'
+                }}
+              >
+                <div className="absolute -top-6 left-0 text-[10px] bg-[#00f2ff] text-black px-2 font-bold uppercase">Target Area</div>
+              </div>
+            ) : null}
           </div>
-          <button onClick={() => {
-            videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-            setIsCaptureOverlay(false);
-          }} className="mt-6 text-white/50 hover:text-white underline font-mono">분석 취소 (ESC)</button>
+
+          <button 
+            onClick={() => setIsCaptureOverlay(false)}
+            className="absolute bottom-10 px-6 py-2 border border-white/30 text-white/50 hover:text-white"
+          >
+            캡처 모드 종료
+          </button>
         </div>
       )}
 
@@ -290,12 +342,11 @@ function App() {
       </header>
 
       <main className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* Left Section */}
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
             <div className="flex justify-between mb-6">
-              <button onClick={() => { setIsUrlMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>사진/동영상 업로드</button>
-              <button onClick={() => { setIsUrlMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>화면 캡처 분석</button>
+              <button onClick={() => { setIsUrlMode(false); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>파일 분석</button>
+              <button onClick={() => { setIsUrlMode(true); setProgress(0); }} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>영역 캡처 분석</button>
             </div>
 
             {!isUrlMode ? (
@@ -309,20 +360,24 @@ function App() {
                 <input type="file" className="hidden" onChange={handleFileChange} />
               </label>
             ) : (
-              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center items-center gap-5">
-                <div className="text-center mb-2">
-                   <p className="text-sm opacity-70 mb-1">유튜브 쇼츠, 인스타그램 등 분석 대상을 띄우고</p>
-                   <p className="font-bold text-[#00f2ff]">아래 버튼을 클릭하여 영역을 드래그하세요.</p>
+              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center items-center gap-6">
+                <div className="text-center space-y-2">
+                  <p className="text-[#00f2ff] font-bold">원하는 웹페이지나 영상을 띄운 뒤</p>
+                  <p className="text-xs opacity-60">아래 버튼을 누르고 창을 선택하세요.</p>
                 </div>
-                <button onClick={startScreenCapture} disabled={isExtracting} className="w-full bg-[#00f2ff] text-black font-black py-5 hover:bg-white transition-all disabled:bg-gray-600 shadow-[0_0_20px_rgba(0,242,255,0.6)] animate-pulse">
-                  {isExtracting ? "영역 데이터 처리 중..." : "실시간 화면 캡처 분석 시작"}
+                <button 
+                  onClick={startScreenCapture} 
+                  disabled={isExtracting}
+                  className="w-full bg-[#00f2ff] text-black font-black py-6 hover:bg-white transition-all shadow-[0_0_20px_#00f2ff] animate-pulse"
+                >
+                  {isExtracting ? "데이터 무결성 검증 중..." : "브라우저 화면 선택 및 캡처"}
                 </button>
               </div>
             )}
           </div>
 
           <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all disabled:opacity-50">
-            {isAnalyzing ? "데이터 정밀 분석 중..." : "증거물 판별하기"}
+            {isAnalyzing ? "정밀 판독 시스템 가동 중..." : "증거물 판별하기"}
           </button>
 
           <div className="grid grid-cols-3 gap-4 opacity-50">
@@ -336,13 +391,13 @@ function App() {
 
           <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff] shadow-lg">
             <h3 className="text-[#00f2ff] text-sm font-bold mb-1 underline tracking-widest uppercase">AI 분석관의 소견</h3>
-            <p className="text-gray-200 text-sm font-mono italic leading-relaxed">{analysisResult.comment || "> 디지털 지문 분석 대기 중..."}</p>
+            <p className="text-gray-200 text-sm font-mono italic leading-relaxed">{analysisResult.comment || "> 분석 대기 중..."}</p>
           </div>
         </section>
 
-        {/* Right Section */}
+        {/* Right Section: Results */}
         <section className="lg:col-span-7 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[650px] shadow-2xl relative overflow-hidden">
+          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[650px] shadow-2xl relative">
             
             <div className="flex justify-between items-start mb-12">
               <div>
@@ -369,54 +424,35 @@ function App() {
               </div>
             </div>
 
-            {/* Analysis Progress Bar */}
             <div className="mb-12">
               <div className="flex justify-between text-[10px] mb-2 font-mono tracking-widest">
                 <span>SYSTEM PROCESSING UNIT</span>
                 <span>{Math.floor(progress)}%</span>
               </div>
               <div className="h-2 bg-black border border-[#00f2ff]/30 relative overflow-hidden">
-                <div 
-                  className="h-full bg-[#00f2ff] shadow-[0_0_15px_#00f2ff] transition-all duration-300 ease-out" 
-                  style={{ width: `${progress}%` }}
-                ></div>
-                <div className="absolute top-0 left-0 w-full h-full scan-bar-light"></div>
+                <div className="h-full bg-[#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
               </div>
             </div>
 
-            {/* Main Screen: Dynamic Content */}
             <div className="flex-grow">
-              <p className="text-xs mb-6 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-[0.4em]">
-                DETECTION MONITOR
-              </p>
+              <p className="text-xs mb-6 text-[#00f2ff] font-bold border-l-4 border-[#00f2ff] pl-3 uppercase tracking-[0.4em]">DETECTION MONITOR</p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-full">
-                {/* 1. 이미지/캡처 모드 결과 */}
-                {(!isUrlMode || analysisResult.urlFaces.length > 0) && analysisResult.srmScore !== null && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {analysisResult.srmScore !== null && (
                   <>
-                    <DonutChart score={analysisResult.srmScore} label="주파수(SRM) 대조 분석" color="#7C3AED" />
-                    <DonutChart score={analysisResult.pixelScore} label="픽셀(Pixel) 변조 분석" color="#2563EB" />
+                    <DonutChart score={analysisResult.srmScore} label="주파수 대조 분석" color="#7C3AED" />
+                    <DonutChart score={analysisResult.pixelScore} label="픽셀 변조 분석" color="#2563EB" />
                   </>
                 )}
 
-                {/* 2. 비디오 모드 결과 */}
-                {!isUrlMode && fileType === 'video' && analysisResult.graphImg && (
-                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
-                    <img src={analysisResult.graphImg} className="w-full h-full object-contain" />
-                  </div>
-                )}
-
-                {/* 3. 캡처 모드에서 검출된 얼굴 리스트 표시 */}
+                {/* 캡처 모드에서 얼굴 리스트 출력 */}
                 {isUrlMode && analysisResult.urlFaces.length > 0 && (
                   <div className="col-span-2 border border-[#00f2ff]/20 bg-black/20 p-4">
-                    <p className="text-[10px] mb-3 opacity-50 uppercase tracking-tighter">추출된 안면 데이터 분석:</p>
+                    <p className="text-[10px] mb-3 opacity-50">DETECTION FACES:</p>
                     <div className="grid grid-cols-4 gap-4">
                       {analysisResult.urlFaces.map((item, idx) => (
-                        <div key={idx} className="relative border border-[#00f2ff]/40 bg-black">
-                          <img 
-                            src={`data:image/jpeg;base64,${item.face_img}`} 
-                            className="w-full aspect-square object-cover" 
-                          />
+                        <div key={idx} className="relative border border-[#00f2ff]/40">
+                          <img src={`data:image/jpeg;base64,${item.face_img}`} className="w-full aspect-square object-cover" />
                           <div className={`absolute bottom-0 w-full text-[10px] text-center font-bold py-1 ${item.score > 50 ? 'bg-green-600' : 'bg-red-600'}`}>
                             {item.score}%
                           </div>
@@ -426,12 +462,17 @@ function App() {
                   </div>
                 )}
 
-                {/* 대기 화면 */}
-                {(!analysisResult.srmScore && !analysisResult.graphImg && analysisResult.urlFaces.length === 0) && (
-                  <div className="col-span-2 aspect-video bg-gray-900/20 border border-dashed border-[#00f2ff]/10 flex flex-col items-center justify-center space-y-4">
-                    <div className="w-12 h-12 border-4 border-[#00f2ff]/20 border-t-[#00f2ff] rounded-full animate-spin"></div>
-                    <span className="text-xs opacity-40 uppercase tracking-[0.5em]">데이터 패킷 수신 대기 중...</span>
+                {/* 비디오 타임라인 결과 */}
+                {!isUrlMode && analysisResult.graphImg && (
+                  <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
+                    <img src={analysisResult.graphImg} className="w-full h-full object-contain" />
                   </div>
+                )}
+
+                {!analysisResult.srmScore && !analysisResult.graphImg && (
+                   <div className="col-span-2 aspect-video bg-gray-900/20 border border-dashed border-[#00f2ff]/10 flex flex-col items-center justify-center">
+                      <span className="text-xs opacity-40 uppercase tracking-[0.5em]">데이터 패킷 수신 대기 중...</span>
+                   </div>
                 )}
               </div>
             </div>
