@@ -4,7 +4,7 @@ import { client } from "@gradio/client";
 import './index.css';
 
 /**
- * [컴포넌트] DonutChart
+ * [컴포넌트] 결과 표시용 도넛 차트
  */
 const DonutChart = ({ score, label, color }) => {
   const [displayScore, setDisplayScore] = useState(0);
@@ -12,9 +12,7 @@ const DonutChart = ({ score, label, color }) => {
   const circumference = 2 * Math.PI * radius;
   
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setDisplayScore(score);
-    }, 100);
+    const timeout = setTimeout(() => setDisplayScore(score), 100);
     return () => clearTimeout(timeout);
   }, [score]);
 
@@ -24,36 +22,30 @@ const DonutChart = ({ score, label, color }) => {
     <div className="flex flex-col items-center p-6 bg-black/40 border border-[#00f2ff]/10 rounded-sm">
       <span className="text-[11px] mb-4 font-bold tracking-widest text-[#00f2ff]/70 uppercase">{label}</span>
       <div className="relative flex items-center justify-center">
-        <svg className="w-48 h-48 transform -rotate-90">
-          <circle cx="96" cy="96" r={radius} stroke="#1a1f26" strokeWidth="12" fill="transparent" />
+        <svg className="w-40 h-40 transform -rotate-90">
+          <circle cx="80" cy="80" r={radius} stroke="#1a1f26" strokeWidth="10" fill="transparent" />
           <circle 
-            cx="96" cy="96" r={radius} stroke={color} strokeWidth="12" fill="transparent"
+            cx="80" cy="80" r={radius} stroke={color} strokeWidth="10" fill="transparent"
             strokeDasharray={circumference}
             style={{ 
               strokeDashoffset: offset, 
-              transition: 'stroke-dashoffset 2s cubic-bezier(0.2, 0.8, 0.2, 1)',
-              filter: `drop-shadow(0 0 10px ${color})`
+              transition: 'stroke-dashoffset 1.5s ease-out',
+              filter: `drop-shadow(0 0 8px ${color})`
             }}
             strokeLinecap="round"
           />
         </svg>
-        <div className="absolute flex flex-col items-center">
-          <span className="text-4xl font-black text-white">{Math.floor(displayScore)}%</span>
-        </div>
+        <span className="absolute text-3xl font-black text-white">{Math.floor(displayScore)}%</span>
       </div>
     </div>
   );
 };
 
 function App() {
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [rawFile, setRawFile] = useState(null);
-  const [fileType, setFileType] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const progressTimer = useRef(null);
   const [isUrlMode, setIsUrlMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const progressTimer = useRef(null);
 
   const [analysisResult, setAnalysisResult] = useState({
     srmScore: null,
@@ -64,250 +56,187 @@ function App() {
     comment: ""
   });
 
-  const newsData = [
-    { id: 1, src: "/image/news_1.png", label: "EVIDENCE_01" },
-    { id: 2, src: "/image/news_2.jpeg", label: "EVIDENCE_02" },
-    { id: 3, src: "/image/news_3.jpg", label: "EVIDENCE_03" }
-  ];
-
-  const startProgress = (seconds) => {
-    clearInterval(progressTimer.current);
+  // 진행 바 애니메이션
+  const startProgress = () => {
     setProgress(0);
-    const interval = 100;
-    const step = 100 / (seconds * (1000 / interval));
+    clearInterval(progressTimer.current);
     progressTimer.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 95) {
-          clearInterval(progressTimer.current);
-          return prev;
-        }
-        return prev + step;
-      });
-    }, interval);
+      setProgress(prev => (prev >= 95 ? prev : prev + 2));
+    }, 100);
   };
 
-  // --- [수정된 부분] 브라우저 선택 즉시 전체 화면 캡처 ---
+  /**
+   * [핵심 기능] 브라우저 창 선택 즉시 캡처 및 전송
+   */
   const handleInstantCapture = async () => {
     try {
-      // 1. 브라우저 탭/창 선택창 띄우기
+      // 1. 브라우저 창/탭 선택 팝업 실행
       const stream = await navigator.mediaDevices.getDisplayMedia({ 
         video: { displaySurface: "browser" },
         audio: false 
       });
 
       setIsExtracting(true);
-      startProgress(3);
+      startProgress();
 
-      // 2. 비디오 엘리먼트 생성 (화면 프레임 추출용)
+      // 2. 비디오 객체를 생성하여 스트림의 한 프레임을 캡처
       const video = document.createElement('video');
       video.srcObject = stream;
       
       video.onloadedmetadata = () => {
         video.play();
         
-        // 3. 캔버스에 현재 프레임 그리기
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        
-        // 약간의 지연(0.5초)을 주어 화면이 전환된 후 캡처되도록 함
+        // 화면이 안정화될 때까지 아주 짧게 대기 후 캡처
         setTimeout(async () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           
+          // 3. 스트림 중지 (공유 종료)
+          stream.getTracks().forEach(track => track.stop());
+
+          // 4. 이미지 블롭 생성 및 백엔드 전송
           canvas.toBlob(async (blob) => {
-            const file = new File([blob], "screen_capture.jpg", { type: "image/jpeg" });
-            
-            // 스트림 종료 (공유 중지)
-            stream.getTracks().forEach(track => track.stop());
+            const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
 
             try {
               const app = await client("euntaejang/deepfake");
+              // 백엔드의 extract_url 엔드포인트 호출
               const result = await app.predict("/extract_url", [file]);
 
+              // 5. 결과값 세팅 및 화면 갱신
+              const score = parseFloat(result.data[0]) || 0;
               setAnalysisResult({
-                realConfidence: result.data[0],
+                realConfidence: score,
                 urlFaces: result.data[1] || [],
-                srmScore: parseFloat(result.data[0]) || 0,
-                pixelScore: 100 - (parseFloat(result.data[0]) || 0),
-                comment: `[브라우저 캡처 분석 완료] ${result.data[2]}`
+                srmScore: score,
+                pixelScore: 100 - score,
+                comment: `[실시간 캡처 분석 완료] ${result.data[2]}`
               });
 
               clearInterval(progressTimer.current);
               setProgress(100);
             } catch (error) {
-              alert("분석 서버 응답 실패");
+              console.error(error);
+              alert("분석 실패: 서버 연결을 확인하세요.");
               setProgress(0);
             } finally {
               setIsExtracting(false);
             }
           }, 'image/jpeg');
-        }, 500);
+        }, 500); 
       };
     } catch (err) {
-      console.error("캡처 취소:", err);
+      console.log("사용자가 창 선택을 취소함");
       setIsExtracting(false);
     }
   };
 
-  // 기존 파일 분석 핸들러 (유지)
-  const handleAnalyze = async () => {
-    if (!rawFile) {
-      alert("분석할 증거물을 확보하십시오.");
-      return;
-    }
-    setIsAnalyzing(true);
-    startProgress(fileType === 'image' ? 5 : 15);
-
-    try {
-      const app = await client("euntaejang/deepfake");
-      const endpoint = fileType === 'video' ? "/predict_video" : "/predict";
-      const apiResult = await app.predict(endpoint, [rawFile]);
-
-      clearInterval(progressTimer.current);
-      setProgress(100);
-
-      if (fileType === 'video') {
-        setAnalysisResult({
-          realConfidence: apiResult.data[0],
-          graphImg: apiResult.data[1]?.url,
-          comment: "[영상 타임라인 분석 완료] 데이터 무결성 검증됨."
-        });
-      } else {
-        setAnalysisResult({
-          realConfidence: apiResult.data[0],
-          srmScore: apiResult.data[1],
-          pixelScore: apiResult.data[2],
-          comment: apiResult.data[0] > 50 ? "[판독완료] 무결성 통과." : "[경고] 변조 감지."
-        });
-      }
-    } catch (error) {
-      clearInterval(progressTimer.current);
-      setProgress(0);
-      alert("오류 발생");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const displayScore = analysisResult.realConfidence !== null
-    ? (typeof analysisResult.realConfidence === 'string' ? parseFloat(analysisResult.realConfidence) : Math.floor(analysisResult.realConfidence))
-    : null;
+  const displayScore = analysisResult.realConfidence;
 
   return (
-    <div className="min-h-screen forensic-grid p-6 md:p-12 text-[#00f2ff] bg-[#0a0e14]">
+    <div className="min-h-screen forensic-grid p-6 text-[#00f2ff] bg-[#0a0e14]">
       {/* Header */}
-      <header className="max-w-[1600px] mx-auto mb-10 flex justify-between items-center border-b-4 border-[#00f2ff] pb-6">
-        <div className="flex items-center gap-5">
-          <div className="w-16 h-16 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_15px_#00f2ff]">
-            <span className="text-black text-xl font-black">dbdb</span>
+      <header className="max-w-[1400px] mx-auto mb-8 flex justify-between items-center border-b-2 border-[#00f2ff] pb-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-[#00f2ff] flex items-center justify-center rounded-sm shadow-[0_0_10px_#00f2ff]">
+            <span className="text-black text-lg font-black">DB</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">디비디비딥페이크</h1>
+          <h1 className="text-3xl font-black tracking-tighter uppercase font-mono">Deepfake Detector v2</h1>
         </div>
-        <button onClick={() => window.location.reload()} className="px-8 py-3 border-2 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all font-black italic">새로고침</button>
+        <div className="text-[10px] font-mono animate-pulse">SYSTEM STATUS: OPERATIONAL</div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <section className="lg:col-span-5 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-6 shadow-inner">
-            <div className="flex justify-between mb-6">
-              <button onClick={() => setIsUrlMode(false)} className={`flex-1 py-3 font-bold border-b-4 ${!isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>파일 업로드</button>
-              <button onClick={() => setIsUrlMode(true)} className={`flex-1 py-3 font-bold border-b-4 ${isUrlMode ? 'border-[#00f2ff] bg-[#00f2ff]/10' : 'border-transparent text-gray-500'}`}>브라우저 캡처</button>
-            </div>
-
-            {!isUrlMode ? (
-              <label className="relative aspect-video bg-black/70 border-2 border-dashed border-[#00f2ff]/50 flex flex-col items-center justify-center cursor-pointer overflow-hidden group">
-                {selectedFile ? (
-                  fileType === 'video' ? <video src={selectedFile} className="w-full h-full object-contain" /> : <img src={selectedFile} className="w-full h-full object-contain" />
-                ) : (
-                  <p className="text-[#00f2ff]/50 font-bold text-center">증거물 업로드</p>
+      <main className="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Side: Control Panel */}
+        <section className="lg:col-span-4 space-y-4">
+          <div className="bg-[#121b28] border border-[#00f2ff]/30 p-6 rounded-lg shadow-xl">
+            <h2 className="text-lg font-bold mb-4 border-l-4 border-[#00f2ff] pl-3">분석 도구 선택</h2>
+            
+            <div className="flex flex-col gap-4 mt-6">
+              <button 
+                onClick={handleInstantCapture}
+                disabled={isExtracting}
+                className={`w-full py-8 border-2 font-black text-xl transition-all flex flex-col items-center justify-center gap-2
+                  ${isExtracting ? 'border-gray-500 text-gray-500 cursor-not-allowed' : 'border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black shadow-[0_0_15px_rgba(0,242,255,0.2)]'}`}
+              >
+                {isExtracting ? "ANALYZING..." : (
+                  <>
+                    <span className="text-2xl">📸</span>
+                    <span>브라우저 창 선택 분석</span>
+                  </>
                 )}
-                <input type="file" className="hidden" onChange={(e) => {
-                  const file = e.target.files[0];
-                  if(file) {
-                    setRawFile(file);
-                    setSelectedFile(URL.createObjectURL(file));
-                    setFileType(file.type.startsWith('video') ? 'video' : 'image');
-                  }
-                }} />
-              </label>
-            ) : (
-              <div className="aspect-video bg-black/70 border-2 border-[#00f2ff]/50 p-8 flex flex-col justify-center items-center gap-6">
-                <div className="text-center">
-                  <p className="text-[#00f2ff] font-bold mb-2">분석할 웹페이지(유튜브 등)를 미리 열어주세요.</p>
-                  <p className="text-xs opacity-50">아래 버튼 클릭 후 원하는 탭을 선택하면 즉시 분석됩니다.</p>
-                </div>
-                <button 
-                  onClick={handleInstantCapture} 
-                  disabled={isExtracting}
-                  className="w-full bg-[#00f2ff] text-black font-black py-6 hover:bg-white transition-all shadow-[0_0_20px_#00f2ff]"
-                >
-                  {isExtracting ? "분석 패킷 전송 중..." : "탭 선택 및 즉시 분석"}
-                </button>
-              </div>
-            )}
+              </button>
+              <p className="text-[11px] text-center opacity-60 font-mono">버튼 클릭 후 원하는 탭/창을 선택하면 즉시 판독합니다.</p>
+            </div>
           </div>
 
-          <button onClick={handleAnalyze} disabled={isAnalyzing || isUrlMode} className="w-full py-4 font-black text-xl border-4 border-[#00f2ff] hover:bg-[#00f2ff] hover:text-black transition-all">
-            {isAnalyzing ? "분석 중..." : "증거물 판별하기"}
-          </button>
-
-          <div className="p-4 bg-black/80 border-l-4 border-[#00f2ff]">
-            <h3 className="text-[#00f2ff] text-sm font-bold mb-1">AI 분석관 소견</h3>
-            <p className="text-gray-200 text-sm font-mono italic">{analysisResult.comment || "> 대기 중..."}</p>
+          <div className="p-4 bg-black/60 border-l-2 border-[#00f2ff] font-mono text-sm italic min-h-[100px]">
+            <span className="text-[#00f2ff] font-bold block mb-1 uppercase text-xs">AI Agent Comment:</span>
+            {analysisResult.comment || "> 분석을 시작하려면 브라우저 창을 선택하십시오..."}
           </div>
         </section>
 
-        <section className="lg:col-span-7 space-y-6">
-          <div className="bg-[#121b28] border-2 border-[#00f2ff]/40 p-10 flex flex-col min-h-[600px] shadow-2xl relative">
-            <div className="flex justify-between items-start mb-12">
+        {/* Right Side: Detection Monitor */}
+        <section className="lg:col-span-8">
+          <div className="bg-[#121b28] border border-[#00f2ff]/30 p-8 rounded-lg shadow-2xl relative min-h-[600px]">
+            <div className="flex justify-between items-start mb-10">
               <div>
-                <p className="text-[#00f2ff]/60 uppercase font-bold text-xs mb-2">최종 신뢰 점수</p>
-                <div className="flex items-baseline gap-4">
-                  <span className="text-8xl font-black italic text-[#00f2ff]">{displayScore ?? "00"}</span>
-                  <span className="text-4xl font-bold text-[#00f2ff]/80">%</span>
+                <p className="text-[10px] uppercase font-bold text-[#00f2ff]/50 tracking-[0.3em]">Integrity Confidence</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-7xl font-black italic text-[#00f2ff]">
+                    {displayScore !== null ? Math.floor(displayScore) : "00"}
+                  </span>
+                  <span className="text-2xl font-bold opacity-70">%</span>
                 </div>
               </div>
-              <div className="text-right">
-                {displayScore !== null && (
-                  <div className={`px-10 py-5 text-3xl font-black border-4 ${displayScore > 50 ? 'border-green-500 text-green-500' : 'border-red-600 text-red-600 animate-pulse'}`}>
-                    {displayScore > 50 ? 'AUTHENTIC' : 'DEEPFAKE'}
-                  </div>
-                )}
+
+              {displayScore !== null && (
+                <div className={`px-8 py-4 text-2xl font-black border-2 shadow-lg ${
+                  displayScore > 50 ? 'border-green-500 text-green-500 bg-green-500/5' : 'border-red-600 text-red-600 bg-red-600/5 animate-pulse'
+                }`}>
+                  {displayScore > 50 ? 'REAL IMAGE' : 'DEEPFAKE DETECTED'}
+                </div>
+              )}
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mb-10">
+              <div className="h-1 bg-black border border-[#00f2ff]/10 relative overflow-hidden">
+                <div 
+                  className="h-full bg-[#00f2ff] shadow-[0_0_10px_#00f2ff] transition-all duration-300" 
+                  style={{ width: `${progress}%` }}
+                ></div>
               </div>
             </div>
 
-            <div className="mb-12">
-              <div className="h-2 bg-black border border-[#00f2ff]/30">
-                <div className="h-full bg-[#00f2ff] transition-all duration-300" style={{ width: `${progress}%` }}></div>
-              </div>
-            </div>
-
-            <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-8">
-              {analysisResult.srmScore !== null && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {displayScore !== null ? (
                 <>
-                  <DonutChart score={analysisResult.srmScore} label="주파수 대조 분석" color="#7C3AED" />
-                  <DonutChart score={analysisResult.pixelScore} label="픽셀 변조 분석" color="#2563EB" />
-                </>
-              )}
-              {isUrlMode && analysisResult.urlFaces.length > 0 && (
-                <div className="col-span-2 border border-[#00f2ff]/20 bg-black/20 p-4">
-                  <p className="text-[10px] mb-3 opacity-50 uppercase">Detected Faces:</p>
-                  <div className="grid grid-cols-5 gap-3">
-                    {analysisResult.urlFaces.map((item, idx) => (
-                      <div key={idx} className="relative border border-[#00f2ff]/40">
-                        <img src={`data:image/jpeg;base64,${item.face_img}`} className="w-full aspect-square object-cover" />
-                        <div className={`absolute bottom-0 w-full text-[8px] text-center font-bold ${item.score > 50 ? 'bg-green-600' : 'bg-red-600'}`}>
-                          {item.score}%
-                        </div>
+                  <DonutChart score={analysisResult.srmScore} label="주파수 대조 분석" color="#8b5cf6" />
+                  <DonutChart score={analysisResult.pixelScore} label="노이즈 무결성 분석" color="#3b82f6" />
+                  
+                  {analysisResult.urlFaces.length > 0 && (
+                    <div className="col-span-2 mt-6 p-4 bg-black/40 border border-[#00f2ff]/10">
+                      <p className="text-[10px] mb-4 opacity-50 font-bold uppercase tracking-widest text-[#00f2ff]">Detected Object Patterns</p>
+                      <div className="flex gap-4 overflow-x-auto pb-2">
+                        {analysisResult.urlFaces.map((face, i) => (
+                          <div key={i} className="min-w-[100px] border border-[#00f2ff]/30 relative group">
+                            <img src={`data:image/jpeg;base64,${face.face_img}`} className="w-full aspect-square object-cover" />
+                            <div className="absolute bottom-0 w-full bg-[#00f2ff] text-black text-[9px] font-bold text-center">
+                              {face.score}%
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!isUrlMode && analysisResult.graphImg && (
-                <div className="col-span-2 border border-[#00f2ff]/20 bg-black/40 p-4">
-                  <img src={analysisResult.graphImg} className="w-full h-full object-contain" />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="col-span-2 h-[300px] flex items-center justify-center border border-dashed border-[#00f2ff]/20">
+                  <p className="text-xs uppercase tracking-[1em] opacity-30 animate-pulse">Waiting for Data Stream...</p>
                 </div>
               )}
             </div>
